@@ -4,7 +4,15 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-04-18
+
+### Changed
+
+- Retag of `v0.4.0` on the same commit. No code changes. `proxy.golang.org` cached a transient "connection refused" error when it first tried to fetch `v0.4.0`, leaving `.info`/`.mod`/`.zip` endpoints serving 404. `v0.4.1` is the usable floor for this release line.
+
 ## [0.4.0] — 2026-04-18
+
+> Note: the tag exists on GitHub but cannot be resolved by `go get` because of a poisoned proxy cache. Consumers should pin to `v0.4.1`.
 
 ### Changed (breaking)
 
@@ -69,7 +77,8 @@ All notable changes to this project are documented in this file. The format is b
 - Auto-filter for cobra's injected `help` / `completion` subcommands (depth-aware, so a user-defined nested `help` is preserved).
 - MIT license, README, PRD, runnable `./example` CLI.
 
-[Unreleased]: https://github.com/bueti/skillgen/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/bueti/skillgen/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/bueti/skillgen/releases/tag/v0.4.1
 [0.4.0]: https://github.com/bueti/skillgen/releases/tag/v0.4.0
 [0.3.0]: https://github.com/bueti/skillgen/releases/tag/v0.3.0
 [0.2.0]: https://github.com/bueti/skillgen/releases/tag/v0.2.0
