@@ -1,10 +1,10 @@
-# PRD: cli-skills
+# PRD: skillgen
 
 A Go library for generating agent skill files from a CLI's command tree, analogous to how `spf13/cobra` generates shell tab completions.
 
 ## 1. Summary
 
-`cli-skills` lets CLI authors emit agent skills (Markdown + YAML frontmatter) directly from their cobra command tree. One line of integration gives a tool a `skills` subcommand — the same pattern cobra already uses for `completion`. The generated files teach AI coding agents (Claude Code and compatible tools) when the CLI is relevant and how to invoke it, without the author hand-writing and maintaining prose.
+`skillgen` lets CLI authors emit agent skills (Markdown + YAML frontmatter) directly from their cobra command tree. One line of integration gives a tool a `skills` subcommand — the same pattern cobra already uses for `completion`. The generated files teach AI coding agents (Claude Code and compatible tools) when the CLI is relevant and how to invoke it, without the author hand-writing and maintaining prose.
 
 ## 2. Motivation
 
@@ -14,7 +14,7 @@ Agent skills are becoming the standard way to make a CLI discoverable inside age
 - Duplicate help content across `--help`, README, docs site, and skill files.
 - Ship no skill at all because the overhead isn't justified for a small tool.
 
-Cobra solved the identical drift problem for shell completions by generating them from the authoritative source — the command tree. `cli-skills` applies the same idea to agent skills.
+Cobra solved the identical drift problem for shell completions by generating them from the authoritative source — the command tree. `skillgen` applies the same idea to agent skills.
 
 ## 3. Goals
 
@@ -90,20 +90,20 @@ The split threshold is a deliberate author decision, not auto-detected: the trad
 Drop-in subcommand:
 
 ```go
-import cliskills "github.com/bbu/cli-skills"
+import "github.com/bueti/skillgen"
 
 root := &cobra.Command{Use: "mytool"}
 // ... register subcommands ...
-root.AddCommand(cliskills.NewSkillsCmd(root))
+root.AddCommand(skillgen.NewSkillsCmd(root))
 ```
 
 Programmatic:
 
 ```go
-gen := cliskills.New(root,
-    cliskills.WithSplit(cliskills.SplitPerLeaf), // optional; default is SplitNone (single skill)
-    cliskills.WithOverview(true),                // only meaningful in split mode
-    cliskills.WithTemplate(myTmpl),
+gen := skillgen.New(root,
+    skillgen.WithSplit(skillgen.SplitPerLeaf), // optional; default is SplitNone (single skill)
+    skillgen.WithOverview(true),                // only meaningful in split mode
+    skillgen.WithTemplate(myTmpl),
 )
 if err := gen.WriteTo("./.claude/skills"); err != nil { ... }
 ```
@@ -119,7 +119,7 @@ deployCmd.Annotations = map[string]string{
 
 ## 9. Integration flow
 
-1. Author adds `cli-skills` as a dependency.
+1. Author adds `skillgen` as a dependency.
 2. Author registers `NewSkillsCmd(root)` on their root command.
 3. In CI or a Makefile, `mytool skills generate --dir ./.claude/skills` runs on every build.
 4. Generated files are checked in (or published as a release artifact) so consumers get them without running the tool.
@@ -143,4 +143,4 @@ deployCmd.Annotations = map[string]string{
 
 - A cobra-based CLI can produce a working, agent-usable skill set in under 10 lines of integration code.
 - Regenerating skills on an unchanged command tree produces a byte-identical diff.
-- At least one external CLI adopts `cli-skills` and reports that agents invoke it correctly based on the generated skills.
+- At least one external CLI adopts `skillgen` and reports that agents invoke it correctly based on the generated skills.
