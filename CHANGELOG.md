@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Fixed
+
+- **`skill.trigger` no longer double-prefixes full-sentence inputs.** The annotation previously had an undocumented contract — it had to be a fragment like `"deploy, ship"` because the library prepended `"Use when the user asks to "` and appended `"."`. Authors who supplied a complete sentence like `"Use when the user asks to deploy."` got `"…Use when the user asks to Use when the user asks to deploy.."`. Both forms now work: fragments are wrapped as before, full-sentence inputs are detected (case-insensitive `"use when the user asks"` prefix) and used as-is with a single trailing period. Documented on the annotation constant.
+
+### Changed
+
+- **"When to use" section no longer restates the description.** It now contains only the trigger clause ("Use when the user asks to …"), which is the content agents actually need. When no trigger signal is available — no `skill.trigger`, no aliases — the section is omitted entirely instead of faking guidance by restating Short/Long.
+- **Root commands without explicit triggers now synthesize one from visible child names.** A CLI with subcommands `[dev, gpu, k8s]` gets "Use when the user asks about dev, gpu, or k8s." added automatically. Leaves do not synthesize (their own name would just echo the description).
+
+### Added
+
+- **`WithTarget(TargetClaudeCode)`** — emits Claude Code-specific frontmatter fields. Initial support for `allowed-tools` via the new `skill.allowed-tools` annotation (comma-separated list like `"Bash, Read, Edit"`). `TargetGeneric` remains the default and is unchanged.
+- **Output budget summary** — `skills generate` now prints `N skill(s), ~K tokens (X KB)` after writing and warns to stderr when output exceeds ~15 000 tokens. Helps authors see how much agent context their skills consume.
+- **Three new lint rules**:
+  - `operator-subtree` — warns when a command name ends `-operator`, `-daemon`, or `-runner` (usually an internal server command that wants `skill.skip`).
+  - `depth` — warns when a command's path is 4+ levels deep (agents struggle with deeply nested matching).
+  - `sibling-variance` — warns a parent when its children's description lengths vary wildly (max > 3× min with short ≤ 40 chars), flagging asymmetric skill quality.
+
 ## [0.3.0] — 2026-04-18
 
 ### Added

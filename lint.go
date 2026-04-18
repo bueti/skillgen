@@ -136,8 +136,96 @@ func (g *Generator) lintCommand(c *cobra.Command, isRoot bool, out *[]Issue) {
 		})
 	}
 
+	// Operator / daemon subtree — names ending -operator, -daemon, or -runner
+	// usually indicate internal server commands an agent shouldn't surface. A
+	// false positive is trivial for the author to silence with skill.skip.
+	if isOperatorName(c.Name()) {
+		*out = append(*out, Issue{
+			Level:   IssueWarning,
+			Command: path,
+			Field:   "operator-subtree",
+			Message: fmt.Sprintf("name ends in -operator/-daemon/-runner — if this is an internal server command, set the %q annotation to exclude it", AnnotationSkip),
+		})
+	}
+
+	// Path depth — deep nesting is usually a smell; agents have trouble
+	// holding 4-level command paths in trigger descriptions.
+	if depth := strings.Count(path, " "); depth >= maxRecommendedDepth {
+		*out = append(*out, Issue{
+			Level:   IssueWarning,
+			Command: path,
+			Field:   "depth",
+			Message: fmt.Sprintf("%d levels deep; consider flattening — nested paths are harder for agents to match", depth),
+		})
+	}
+
+	// Sibling Short-length variance — if one sibling has a 400-char Long and
+	// another a 10-word Short, the skill quality is uneven. Warn the parent.
+	if len(visibleChildren) >= 2 {
+		if iss := lintSiblingVariance(path, visibleChildren); iss != nil {
+			*out = append(*out, *iss)
+		}
+	}
+
 	for _, sub := range visibleChildren {
 		g.lintCommand(sub, false, out)
+	}
+}
+
+// isOperatorName reports whether c's leaf name looks like an internal
+// server/operator command that probably shouldn't be in skill output.
+func isOperatorName(name string) bool {
+	for _, suffix := range []string{"-operator", "-daemon", "-runner"} {
+		if strings.HasSuffix(name, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// maxRecommendedDepth is the path-space count at or above which depth is flagged.
+// "tool a b c" has 3 spaces — 3 levels deep. We warn at 4.
+const maxRecommendedDepth = 4
+
+// lintSiblingVariance returns a warning when siblings have wildly different
+// description lengths (max > 3x min), which tends to indicate some siblings
+// got careful Longs and others got a perfunctory Short.
+func lintSiblingVariance(parentPath string, siblings []*cobra.Command) *Issue {
+	lengths := make([]int, 0, len(siblings))
+	for _, s := range siblings {
+		effective := strings.TrimSpace(s.Long)
+		if effective == "" {
+			effective = strings.TrimSpace(s.Short)
+		}
+		if effective == "" {
+			continue
+		}
+		lengths = append(lengths, len(effective))
+	}
+	if len(lengths) < 2 {
+		return nil
+	}
+	minLen, maxLen := lengths[0], lengths[0]
+	for _, l := range lengths[1:] {
+		if l < minLen {
+			minLen = l
+		}
+		if l > maxLen {
+			maxLen = l
+		}
+	}
+	if minLen == 0 || maxLen < minLen*3 {
+		return nil
+	}
+	// Skip noise when the "short" sibling is already a reasonable Short.
+	if minLen >= 40 {
+		return nil
+	}
+	return &Issue{
+		Level:   IssueWarning,
+		Command: parentPath,
+		Field:   "sibling-variance",
+		Message: fmt.Sprintf("subcommand description lengths vary widely (%d..%d chars) — consider levelling up the shorter siblings so agents get symmetric detail", minLen, maxLen),
 	}
 }
 

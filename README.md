@@ -61,15 +61,16 @@ if err := gen.WriteTo("./.claude/skills"); err != nil {
 
 Any cobra command can carry annotations that shape its output:
 
-| Annotation          | Effect                                                                         |
-| ------------------- | ------------------------------------------------------------------------------ |
-| `skill.trigger`     | Appends `"Use when the user asks to <trigger>."` to the description.           |
-| `skill.description` | Replaces the generated description entirely.                                   |
-| `skill.name`        | Overrides the skill name (root only in single-skill mode).                     |
-| `skill.skip`        | `"true"` to exclude the command and its subtree.                               |
-| `skill.examples`    | Free-form Markdown appended to the command's body section.                     |
-| `skill.avoid`       | Renders as an **Avoid** section — tell the agent what *not* to do.             |
-| `skill.prefer-over` | Renders as a **Prefer over** section — point the agent away from alternatives. |
+| Annotation            | Effect                                                                             |
+| --------------------- | ---------------------------------------------------------------------------------- |
+| `skill.trigger`       | Appends `"Use when the user asks to <trigger>."` to the description.               |
+| `skill.description`   | Replaces the generated description entirely.                                       |
+| `skill.name`          | Overrides the skill name (root only in single-skill mode).                         |
+| `skill.skip`          | `"true"` to exclude the command and its subtree.                                   |
+| `skill.examples`      | Free-form Markdown appended to the command's body section.                         |
+| `skill.avoid`         | Renders as an **Avoid** section — tell the agent what *not* to do.                 |
+| `skill.prefer-over`   | Renders as a **Prefer over** section — point the agent away from alternatives.     |
+| `skill.allowed-tools` | Only under `TargetClaudeCode` — populates the `allowed-tools` frontmatter field.   |
 
 ```go
 deploy := &cobra.Command{
@@ -92,6 +93,7 @@ deploy := &cobra.Command{
 | `WithFilenamePrefix(p)` | Prepend a prefix to every generated filename.                          |
 | `WithSkip(pred)`        | Custom predicate for excluding commands.                               |
 | `WithIncludeBuiltins()` | Keep cobra's auto-injected `help` / `completion` in the output.        |
+| `WithTarget(t)`         | `TargetGeneric` (default) or `TargetClaudeCode` for richer frontmatter.|
 
 By default, cobra's built-in `help` and `completion` subcommands are filtered out because agents don't need them. User-defined commands with those names at deeper levels are _not_ filtered.
 
@@ -144,6 +146,23 @@ Before consulting annotations, skillgen extracts free signal straight from the c
 - `flag.Deprecated` → deprecated flags are filtered from the rendered flag list entirely; the author already said the flag shouldn't be suggested.
 
 Annotations *augment* this mined signal rather than replace it — an alias list alone is often enough to skip writing `skill.trigger` yourself.
+
+## Targets
+
+Default output is a minimal, interoperable frontmatter (`name` + `description`). Opt into a richer host-specific shape with `WithTarget`:
+
+```go
+gen := skillgen.New(root, skillgen.WithTarget(skillgen.TargetClaudeCode))
+```
+
+Under `TargetClaudeCode`, the `skill.allowed-tools` annotation populates the Claude Code `allowed-tools` frontmatter field:
+
+```go
+deploy.Annotations[skillgen.AnnotationAllowedTools] = "Bash, Read, Edit"
+// → allowed-tools: "Bash, Read, Edit" in the generated frontmatter.
+```
+
+Targets other than the minimal default are additive — they never strip standard keys, only extend.
 
 ## Linting
 
