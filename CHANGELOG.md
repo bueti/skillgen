@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Added
+
+- **Sibling flag collapse in single mode.** When a parent command's visible children all accept exactly the same local flags (name, shorthand, type, required-ness, and usage text all match), skillgen hoists the flag block up to the parent section and suppresses the per-child repetition. A real CLI like `infractl k8s actions` with six leaves sharing `-p <instances>` and `-r <reason>` drops ~45 lines of duplication. A single differing flag across siblings disables the collapse so agents never see a subtly wrong flag list. Split mode is unaffected.
+- `CommandData.SharedChildrenFlags` (on the parent) and `CommandData.SkipFlagsInRender` (on each child) expose the collapse decision to custom templates.
+
 ### Changed (breaking)
 
 - **Output layout now follows the [agentskills.io spec](https://agentskills.io/specification).** Each skill is written as `<name>/SKILL.md` inside the target directory instead of `<name>.md` flat. Agent loaders that expect the spec layout (including Claude Code) now find skillgen output correctly.

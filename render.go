@@ -39,6 +39,14 @@ type CommandData struct {
 	Extra      string // skill.examples annotation contents
 	Depth      int    // 1 for direct child of root, 2 for grandchild, ...
 	HasSubs    bool   // true if this command has at least one visible subcommand
+
+	// SharedChildrenFlags is set on a parent whose visible children all have
+	// identical local flag sets. The parent's section emits these once and
+	// each child's section skips its local-flags block to avoid duplication.
+	SharedChildrenFlags []FlagData
+	// SkipFlagsInRender is set on children whose parent owns the shared-flags
+	// block — render suppresses the per-child "Flags:" list in that case.
+	SkipFlagsInRender bool
 }
 
 // FlagData describes one pflag.Flag.
@@ -123,22 +131,98 @@ func collectFlags(c *cobra.Command) []FlagData {
 	return out
 }
 
-func (g *Generator) collectDescendants(root *cobra.Command) []CommandData {
-	var out []CommandData
-	var walk func(c *cobra.Command)
-	walk = func(c *cobra.Command) {
-		subs := append([]*cobra.Command(nil), c.Commands()...)
-		sort.SliceStable(subs, func(i, j int) bool { return subs[i].Name() < subs[j].Name() })
+func (g *Generator) collectDescendants(root *cobra.Command) (descendants []CommandData, rootShared []FlagData) {
+	// Walk the tree depth-first, stable-sorted. For each parent, check whether
+	// its visible children all have the same local-flag fingerprint; if so,
+	// hoist the flag set up to the parent so the children don't re-render it.
+	//
+	// The Root slot of TemplateData covers the top-level command, so the
+	// flattened slice contains only descendants. rootShared returns separately
+	// because the root isn't in that slice but can still anchor a sibling
+	// group (the visible children of the top-level command).
+	out := make([]CommandData, 0)
+
+	var walk func(parent *cobra.Command, parentIdx int)
+	walk = func(parent *cobra.Command, parentIdx int) {
+		subs := g.visibleSubcommands(parent)
+		if len(subs) == 0 {
+			return
+		}
+
+		siblingGroup := make([]int, 0, len(subs))
 		for _, sub := range subs {
-			if g.shouldSkip(sub) {
-				continue
-			}
 			out = append(out, commandData(sub))
-			walk(sub)
+			idx := len(out) - 1
+			siblingGroup = append(siblingGroup, idx)
+			walk(sub, idx)
+		}
+
+		// After children recurse, decide whether to collapse this sibling
+		// group. Collapsing requires ≥ 2 siblings with identical local-flag
+		// fingerprints and at least one flag to share.
+		shared := sharedSiblingFlags(out, siblingGroup)
+		if shared == nil {
+			return
+		}
+		for _, idx := range siblingGroup {
+			out[idx].SkipFlagsInRender = true
+		}
+		if parentIdx >= 0 {
+			out[parentIdx].SharedChildrenFlags = shared
+		} else {
+			rootShared = shared
 		}
 	}
-	walk(root)
+
+	walk(root, -1)
+	return out, rootShared
+}
+
+// visibleSubcommands returns c's direct subcommands that pass shouldSkip,
+// sorted by name for deterministic output.
+func (g *Generator) visibleSubcommands(c *cobra.Command) []*cobra.Command {
+	subs := append([]*cobra.Command(nil), c.Commands()...)
+	sort.SliceStable(subs, func(i, j int) bool { return subs[i].Name() < subs[j].Name() })
+	out := subs[:0]
+	for _, sub := range subs {
+		if !g.shouldSkip(sub) {
+			out = append(out, sub)
+		}
+	}
 	return out
+}
+
+// sharedSiblingFlags returns the shared local flag set if every index in
+// siblings has the same local-flag fingerprint and there is at least one
+// flag to share; otherwise nil.
+func sharedSiblingFlags(all []CommandData, siblings []int) []FlagData {
+	if len(siblings) < 2 {
+		return nil
+	}
+	first := localOnly(all[siblings[0]].Flags)
+	if len(first) == 0 {
+		return nil
+	}
+	fp := flagFingerprint(first)
+	for _, idx := range siblings[1:] {
+		if flagFingerprint(localOnly(all[idx].Flags)) != fp {
+			return nil
+		}
+	}
+	return first
+}
+
+// flagFingerprint returns a string that uniquely identifies a flag set for
+// sibling-collapse comparison. Includes name, shorthand, type, required
+// status, and usage — siblings that differ in any of these shouldn't be
+// collapsed because the agent-visible detail differs.
+func flagFingerprint(flags []FlagData) string {
+	var b strings.Builder
+	for _, f := range flags {
+		fmt.Fprintf(&b, "%s\x00%s\x00%s\x00%t\x00%s\x01",
+			f.Name, f.Shorthand, f.Type, f.Required, f.Usage)
+	}
+	return b.String()
 }
 
 // defaultRender produces the built-in single-skill Markdown body.
@@ -181,6 +265,13 @@ func defaultRender(d TemplateData) string {
 		b.WriteString("\n")
 	}
 
+	if len(d.Root.SharedChildrenFlags) > 0 {
+		b.WriteString("## Shared subcommand flags\n\n")
+		b.WriteString("Every subcommand below accepts the same flags:\n\n")
+		writeFlagList(&b, d.Root.SharedChildrenFlags)
+		b.WriteString("\n")
+	}
+
 	if len(d.Commands) > 0 {
 		b.WriteString("## Commands\n\n")
 		for _, c := range d.Commands {
@@ -209,11 +300,19 @@ func writeCommandSection(b *strings.Builder, c CommandData) {
 		fmt.Fprintf(b, "Usage: `%s`\n\n", c.UseLine)
 	}
 
-	local := localOnly(c.Flags)
-	if len(local) > 0 {
-		b.WriteString("Flags:\n\n")
-		writeFlagList(b, local)
+	if len(c.SharedChildrenFlags) > 0 {
+		b.WriteString("Shared subcommand flags (apply to every subcommand below):\n\n")
+		writeFlagList(b, c.SharedChildrenFlags)
 		b.WriteString("\n")
+	}
+
+	if !c.SkipFlagsInRender {
+		local := localOnly(c.Flags)
+		if len(local) > 0 {
+			b.WriteString("Flags:\n\n")
+			writeFlagList(b, local)
+			b.WriteString("\n")
+		}
 	}
 
 	if c.Example != "" {

@@ -376,9 +376,12 @@ func isCobraBuiltin(c *cobra.Command) bool {
 }
 
 func (g *Generator) singleSkill() (Skill, error) {
+	descendants, rootShared := g.collectDescendants(g.root)
+	rootData := commandData(g.root)
+	rootData.SharedChildrenFlags = rootShared
 	data := TemplateData{
-		Root:     commandData(g.root),
-		Commands: g.collectDescendants(g.root),
+		Root:     rootData,
+		Commands: descendants,
 	}
 
 	name := firstNonEmpty(g.root.Annotations[AnnotationName], slug(g.root.Name()))
