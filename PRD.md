@@ -137,7 +137,6 @@ deployCmd.Annotations = map[string]string{
 2. **M2** — Annotation-based augmentation + template override hook. ✅
 3. **M3** — `skills generate` subcommand, stable filenames, validation. ✅
 4. **M4** — Split mode (one skill per leaf + optional overview) for large CLIs. ✅
-5. **M5** — Example repo and docs showing both single and split modes with generated skills checked in.
 
 ## 12. Success criteria
 
