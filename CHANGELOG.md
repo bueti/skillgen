@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- **Output layout now follows the [agentskills.io spec](https://agentskills.io/specification).** Each skill is written as `<name>/SKILL.md` inside the target directory instead of `<name>.md` flat. Agent loaders that expect the spec layout (including Claude Code) now find skillgen output correctly.
+- **`Skill.Filename` renamed to `Skill.Path`** and now contains the relative path `<name>/SKILL.md` rather than a basename. Callers that referenced `Filename` need to update.
+
+### Added
+
+- **Spec-standard frontmatter annotations**: `skill.license`, `skill.compatibility`, and `skill.metadata.<key>` (prefix pattern that assembles a sorted `metadata:` map). Emitted under every target.
+- **Spec-limit lint rules**: name length > 64 (error), name format regex (error), description length > 1024 (error), compatibility length > 500 (error), body > 5000 tokens (warning), body > 500 lines (warning).
+- **Per-skill budget warnings** in `skills generate` when any one skill body exceeds the spec's 5000-token recommendation, in addition to the existing aggregate warning.
+- `Skill.Dir()` returns the skill's directory name from its `Path`.
+- `SpecMaxNameLength`, `SpecMaxDescriptionLength`, `SpecMaxCompatibilityLength`, `SpecMaxBodyTokens`, `SpecMaxBodyLines` exposed as constants.
+
 ### Fixed
 
 - **`skill.trigger` no longer double-prefixes full-sentence inputs.** The annotation previously had an undocumented contract — it had to be a fragment like `"deploy, ship"` because the library prepended `"Use when the user asks to "` and appended `"."`. Authors who supplied a complete sentence like `"Use when the user asks to deploy."` got `"…Use when the user asks to Use when the user asks to deploy.."`. Both forms now work: fragments are wrapped as before, full-sentence inputs are detected (case-insensitive `"use when the user asks"` prefix) and used as-is with a single trailing period. Documented on the annotation constant.

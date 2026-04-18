@@ -10,6 +10,28 @@ Generate agent skill files from a [cobra](https://github.com/spf13/cobra) comman
 go get github.com/bueti/skillgen
 ```
 
+## Output layout
+
+skillgen writes to the [agentskills.io specification](https://agentskills.io/specification) layout — each skill is its own directory containing a `SKILL.md` file:
+
+```
+.claude/skills/
+└── mytool/
+    └── SKILL.md
+```
+
+In split mode, one directory per leaf:
+
+```
+.claude/skills/
+├── mytool/           # optional overview
+│   └── SKILL.md
+├── mytool-build/
+│   └── SKILL.md
+└── mytool-deploy/
+    └── SKILL.md
+```
+
 ## Quick start
 
 Add a `skills` subcommand to your root command — same shape as cobra's `completion`:
@@ -61,16 +83,19 @@ if err := gen.WriteTo("./.claude/skills"); err != nil {
 
 Any cobra command can carry annotations that shape its output:
 
-| Annotation            | Effect                                                                             |
-| --------------------- | ---------------------------------------------------------------------------------- |
-| `skill.trigger`       | Appends `"Use when the user asks to <trigger>."` to the description.               |
-| `skill.description`   | Replaces the generated description entirely.                                       |
-| `skill.name`          | Overrides the skill name (root only in single-skill mode).                         |
-| `skill.skip`          | `"true"` to exclude the command and its subtree.                                   |
-| `skill.examples`      | Free-form Markdown appended to the command's body section.                         |
-| `skill.avoid`         | Renders as an **Avoid** section — tell the agent what *not* to do.                 |
-| `skill.prefer-over`   | Renders as a **Prefer over** section — point the agent away from alternatives.     |
-| `skill.allowed-tools` | Only under `TargetClaudeCode` — populates the `allowed-tools` frontmatter field.   |
+| Annotation              | Effect                                                                             |
+| ----------------------- | ---------------------------------------------------------------------------------- |
+| `skill.trigger`         | Accepts a fragment (`"deploy, ship"`) or a full sentence (`"Use when…"`).          |
+| `skill.description`     | Replaces the generated description entirely.                                       |
+| `skill.name`            | Overrides the skill name. Validated against the spec regex.                        |
+| `skill.skip`            | `"true"` to exclude the command and its subtree.                                   |
+| `skill.examples`        | Free-form Markdown appended to the command's body section.                         |
+| `skill.avoid`           | Renders as an **Avoid** section — tell the agent what *not* to do.                 |
+| `skill.prefer-over`     | Renders as a **Prefer over** section — point the agent away from alternatives.     |
+| `skill.license`         | Populates the spec `license` frontmatter field (e.g. `"Apache-2.0"`).              |
+| `skill.compatibility`   | Populates the spec `compatibility` field — max 500 chars, environment reqs only.   |
+| `skill.metadata.<key>`  | Prefix pattern that populates the spec `metadata:` map. Keys emitted sorted.       |
+| `skill.allowed-tools`   | Only under `TargetClaudeCode` — populates the `allowed-tools` frontmatter field.   |
 
 ```go
 deploy := &cobra.Command{
@@ -166,7 +191,7 @@ Targets other than the minimal default are additive — they never strip standar
 
 ## Linting
 
-`skills lint` walks the same tree the generator walks and reports missing or low-quality signal — empty descriptions, overly short `Short` text, leaves without trigger hints, and deprecated commands without a helpful message. Errors produce exit code 1; `--strict` promotes warnings to errors too.
+`skills lint` walks the same tree the generator walks and reports missing or low-quality signal — empty descriptions, overly short `Short` text, leaves without trigger hints, deprecated commands without a helpful message. It also enforces the [agentskills.io spec](https://agentskills.io/specification) hard limits (name ≤ 64 chars and matching the spec regex, description ≤ 1024 chars, compatibility ≤ 500 chars) as errors, and the soft limits (body ≤ 5000 tokens, ≤ 500 lines) as warnings. Errors produce exit code 1; `--strict` promotes warnings to errors too.
 
 ```sh
 mytool skills lint                 # report, but don't fail on warnings
@@ -191,7 +216,7 @@ gen := skillgen.New(root,
 )
 ```
 
-Filenames are slugged from the full command path — `mytool deploy` becomes `mytool-deploy.md`, `mytool config set` becomes `mytool-config-set.md`. The optional overview skill uses the root name (`mytool.md`) and lists every leaf with a short description.
+Each skill lands in its own directory — `mytool deploy` → `mytool-deploy/SKILL.md`, `mytool config set` → `mytool-config-set/SKILL.md`. The optional overview skill uses the root name (`mytool/SKILL.md`) and lists every leaf with a short description.
 
 Rule of thumb: ≤ ~10 commands → single mode; dozens of commands or independent command groups → split mode.
 

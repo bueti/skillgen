@@ -61,8 +61,8 @@ func TestSingleSkill(t *testing.T) {
 	if s.Name != "mytool" {
 		t.Errorf("Name = %q, want %q", s.Name, "mytool")
 	}
-	if s.Filename != "mytool.md" {
-		t.Errorf("Filename = %q, want %q", s.Filename, "mytool.md")
+	if s.Path != "mytool/SKILL.md" {
+		t.Errorf("Path = %q, want %q", s.Path, "mytool/SKILL.md")
 	}
 	if !strings.Contains(s.Body, "### `mytool build`") {
 		t.Errorf("body missing build section:\n%s", s.Body)
@@ -129,8 +129,8 @@ func TestNameOverride(t *testing.T) {
 	if skills[0].Name != "acme-toolkit" {
 		t.Errorf("name override not applied: %q", skills[0].Name)
 	}
-	if skills[0].Filename != "acme-toolkit.md" {
-		t.Errorf("filename not derived from name override: %q", skills[0].Filename)
+	if skills[0].Path != "acme-toolkit/SKILL.md" {
+		t.Errorf("path not derived from name override: %q", skills[0].Path)
 	}
 }
 
@@ -242,8 +242,8 @@ func TestSplitPerLeafLeafContent(t *testing.T) {
 	if !strings.Contains(deploy.Description, "Use when the user asks to deploy, promote, ship, or release a service") {
 		t.Errorf("trigger not appended to leaf description: %q", deploy.Description)
 	}
-	if deploy.Filename != "mytool-deploy.md" {
-		t.Errorf("filename: got %q, want mytool-deploy.md", deploy.Filename)
+	if deploy.Path != "mytool-deploy/SKILL.md" {
+		t.Errorf("path: got %q, want mytool-deploy/SKILL.md", deploy.Path)
 	}
 }
 
@@ -347,7 +347,7 @@ func TestSplitPerLeafWriteTo(t *testing.T) {
 	if err := New(newTestRoot(), WithSplit(SplitPerLeaf), WithOverview(true)).WriteTo(dir); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"mytool.md", "mytool-build.md", "mytool-deploy.md"} {
+	for _, want := range []string{"mytool/SKILL.md", "mytool-build/SKILL.md", "mytool-deploy/SKILL.md"} {
 		if _, err := os.Stat(filepath.Join(dir, want)); err != nil {
 			t.Errorf("missing %s: %v", want, err)
 		}
@@ -359,7 +359,7 @@ func TestWriteToCreatesFile(t *testing.T) {
 	if err := New(newTestRoot()).WriteTo(filepath.Join(dir, "out")); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(filepath.Join(dir, "out", "mytool.md"))
+	data, err := os.ReadFile(filepath.Join(dir, "out", "mytool", "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -400,8 +400,8 @@ func TestCustomTemplate(t *testing.T) {
 
 func TestFilenamePrefix(t *testing.T) {
 	skills, _ := New(newTestRoot(), WithFilenamePrefix("acme-")).Skills()
-	if skills[0].Filename != "acme-mytool.md" {
-		t.Errorf("prefix not applied: %q", skills[0].Filename)
+	if skills[0].Path != "acme-mytool/SKILL.md" {
+		t.Errorf("prefix not applied: %q", skills[0].Path)
 	}
 }
 

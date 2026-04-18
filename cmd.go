@@ -3,6 +3,7 @@ package skillgen
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 )
@@ -46,17 +47,24 @@ func newGenerateCmd(root *cobra.Command, opts []Option) *cobra.Command {
 			skills, _ := g.Skills()
 
 			var totalBytes, totalTokens int
+			var oversized []string
 			for _, s := range skills {
 				b := s.Bytes()
 				totalBytes += len(b)
 				totalTokens += EstimateTokens(b)
-				cmd.Printf("wrote %s/%s\n", dir, s.Filename)
+				cmd.Printf("wrote %s\n", filepath.Join(dir, s.Path))
+				if EstimateTokens([]byte(s.Body)) > SpecMaxBodyTokens {
+					oversized = append(oversized, s.Name)
+				}
 			}
 
 			cmd.Printf("\n%d skill(s), ~%s tokens (%s)\n",
 				len(skills), formatThousands(totalTokens), formatBytes(totalBytes))
+			for _, name := range oversized {
+				cmd.PrintErrf("warning: skill %q body exceeds the spec recommendation (~%d tokens) — consider split mode or moving detail to referenced files\n", name, SpecMaxBodyTokens)
+			}
 			if totalTokens > budgetWarnThreshold {
-				cmd.PrintErrf("warning: output is large (~%s tokens) — "+
+				cmd.PrintErrf("warning: aggregate output is large (~%s tokens) — "+
 					"consider --split=per-leaf, skill.skip on operator subtrees, "+
 					"or trimming inherited flags\n", formatThousands(totalTokens))
 			}
