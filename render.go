@@ -426,8 +426,7 @@ func (g *Generator) deriveDescription(c *cobra.Command) (full, triggerClause str
 
 	switch {
 	case strings.TrimSpace(c.Annotations[AnnotationTrigger]) != "":
-		trig := strings.TrimSpace(c.Annotations[AnnotationTrigger])
-		triggerClause = "Use when the user asks to " + trig + "."
+		triggerClause = formatTriggerClause(c.Annotations[AnnotationTrigger])
 	case len(c.Aliases) > 0:
 		names := append([]string{c.Name()}, c.Aliases...)
 		triggerClause = "Use when the user asks to " + joinOr(names) + "."
@@ -461,6 +460,35 @@ func (g *Generator) visibleChildNames(c *cobra.Command) []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// formatTriggerClause normalizes a skill.trigger annotation into a single
+// "Use when the user asks to …" sentence. Accepts both forms:
+//
+//   - Fragment: "deploy, ship, or release a service" → wrapped into a full
+//     sentence with the standard prefix and a trailing period.
+//   - Full sentence: "Use when the user asks to deploy the service." → used
+//     as-is (only the trailing period is normalized).
+//
+// Detection is case-insensitive. The string "use when the user asks to" is
+// treated as the sentinel prefix; anything starting with it is considered a
+// complete sentence and not wrapped again.
+func formatTriggerClause(trig string) string {
+	trig = strings.TrimSpace(trig)
+	if trig == "" {
+		return ""
+	}
+	const sentinel = "use when the user asks"
+	if strings.HasPrefix(strings.ToLower(trig), sentinel) {
+		if !strings.HasSuffix(trig, ".") && !strings.HasSuffix(trig, "?") && !strings.HasSuffix(trig, "!") {
+			trig += "."
+		}
+		return trig
+	}
+	// Fragment form — strip author-supplied trailing periods so we don't
+	// produce "…deploy..".
+	trig = strings.TrimRight(trig, ".")
+	return "Use when the user asks to " + trig + "."
 }
 
 // joinOr returns a natural-language "a, b, or c" join (Oxford comma for 3+).

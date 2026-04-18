@@ -91,6 +91,87 @@ func TestLeafDoesNotSynthesizeFromOwnName(t *testing.T) {
 	}
 }
 
+// --- trigger normalization (bug: undocumented template contract) ---
+
+func TestTriggerFragmentWrapped(t *testing.T) {
+	root := &cobra.Command{
+		Use:   "mytool",
+		Short: "x",
+		Annotations: map[string]string{
+			AnnotationTrigger: "deploy, ship, or release",
+		},
+	}
+	skills, _ := New(root).Skills()
+	if !strings.Contains(skills[0].Description, "Use when the user asks to deploy, ship, or release.") {
+		t.Errorf("fragment trigger not wrapped correctly: %q", skills[0].Description)
+	}
+}
+
+func TestTriggerFullSentenceUsedAsIs(t *testing.T) {
+	root := &cobra.Command{
+		Use:   "mytool",
+		Short: "x",
+		Annotations: map[string]string{
+			AnnotationTrigger: "Use when the user asks to deploy the service.",
+		},
+	}
+	skills, _ := New(root).Skills()
+	// Must not double-prefix.
+	if strings.Contains(skills[0].Description, "Use when the user asks to Use when") {
+		t.Errorf("full-sentence trigger was double-prefixed: %q", skills[0].Description)
+	}
+	// Must preserve the sentence.
+	if !strings.Contains(skills[0].Description, "Use when the user asks to deploy the service.") {
+		t.Errorf("full-sentence trigger not preserved: %q", skills[0].Description)
+	}
+}
+
+func TestTriggerFullSentenceWithoutPeriodGetsOne(t *testing.T) {
+	root := &cobra.Command{
+		Use:   "mytool",
+		Short: "x",
+		Annotations: map[string]string{
+			AnnotationTrigger: "Use when the user asks to deploy the service",
+		},
+	}
+	skills, _ := New(root).Skills()
+	if !strings.Contains(skills[0].Description, "deploy the service.") {
+		t.Errorf("full-sentence trigger missing trailing period: %q", skills[0].Description)
+	}
+}
+
+func TestTriggerFragmentWithTrailingPeriod(t *testing.T) {
+	root := &cobra.Command{
+		Use:   "mytool",
+		Short: "x",
+		Annotations: map[string]string{
+			AnnotationTrigger: "deploy the service.",
+		},
+	}
+	skills, _ := New(root).Skills()
+	// No "...". double period.
+	if strings.Contains(skills[0].Description, "..") {
+		t.Errorf("fragment with trailing period produced double period: %q", skills[0].Description)
+	}
+	if !strings.Contains(skills[0].Description, "Use when the user asks to deploy the service.") {
+		t.Errorf("fragment with trailing period not rewrapped cleanly: %q", skills[0].Description)
+	}
+}
+
+func TestTriggerCaseInsensitiveSentinel(t *testing.T) {
+	root := &cobra.Command{
+		Use:   "mytool",
+		Short: "x",
+		Annotations: map[string]string{
+			AnnotationTrigger: "USE WHEN THE USER ASKS TO YELL.",
+		},
+	}
+	skills, _ := New(root).Skills()
+	if strings.Contains(skills[0].Description, "Use when the user asks to USE WHEN") {
+		t.Errorf("case-insensitive sentinel not detected: %q", skills[0].Description)
+	}
+}
+
 // --- #7: target-aware frontmatter ---
 
 func TestTargetGenericOmitsExtraFields(t *testing.T) {

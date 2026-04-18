@@ -27,7 +27,16 @@ import (
 // Annotation keys an author can set on a cobra.Command to shape its skill output.
 const (
 	// AnnotationTrigger adds trigger phrases to the skill's description.
-	// Typical value: "deploy, promote, ship a service".
+	//
+	// Two forms are accepted:
+	//
+	//   - Fragment (preferred): "deploy, promote, ship a service". The
+	//     library wraps it into "Use when the user asks to <fragment>."
+	//   - Full sentence: "Use when the user asks to deploy the service."
+	//     (case-insensitive prefix detection). Used as-is.
+	//
+	// Trailing punctuation is normalized so both forms produce a single
+	// terminating period.
 	AnnotationTrigger = "skill.trigger"
 
 	// AnnotationDescription replaces the generated description wholesale.

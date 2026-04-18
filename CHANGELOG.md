@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Fixed
+
+- **`skill.trigger` no longer double-prefixes full-sentence inputs.** The annotation previously had an undocumented contract — it had to be a fragment like `"deploy, ship"` because the library prepended `"Use when the user asks to "` and appended `"."`. Authors who supplied a complete sentence like `"Use when the user asks to deploy."` got `"…Use when the user asks to Use when the user asks to deploy.."`. Both forms now work: fragments are wrapped as before, full-sentence inputs are detected (case-insensitive `"use when the user asks"` prefix) and used as-is with a single trailing period. Documented on the annotation constant.
+
 ### Changed
 
 - **"When to use" section no longer restates the description.** It now contains only the trigger clause ("Use when the user asks to …"), which is the content agents actually need. When no trigger signal is available — no `skill.trigger`, no aliases — the section is omitted entirely instead of faking guidance by restating Short/Long.
