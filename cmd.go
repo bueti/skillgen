@@ -44,7 +44,7 @@ func newGenerateCmd(root *cobra.Command, opts []Option) *cobra.Command {
 			}
 			skills, _ := g.Skills()
 			for _, s := range skills {
-				fmt.Fprintf(cmd.OutOrStdout(), "wrote %s/%s\n", dir, s.Filename)
+				cmd.Printf("wrote %s/%s\n", dir, s.Filename)
 			}
 			return nil
 		},

@@ -6,7 +6,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/bueti/skillgen"
@@ -31,7 +30,7 @@ func main() {
 		Example: "mytool build api --tag v1.2.3",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprintf(cmd.OutOrStdout(), "would build %s\n", args[0])
+			cmd.Printf("would build %s\n", args[0])
 			return nil
 		},
 	}
@@ -49,7 +48,7 @@ func main() {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env, _ := cmd.Flags().GetString("env")
-			fmt.Fprintf(cmd.OutOrStdout(), "would deploy %s to %s\n", args[0], env)
+			cmd.Printf("would deploy %s to %s\n", args[0], env)
 			return nil
 		},
 	}
@@ -62,7 +61,7 @@ func main() {
 		Short: "Show current deployment state",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprintf(cmd.OutOrStdout(), "status: %s is healthy\n", args[0])
+			cmd.Printf("status: %s is healthy\n", args[0])
 			return nil
 		},
 	}
