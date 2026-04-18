@@ -82,14 +82,14 @@ deploy := &cobra.Command{
 
 ## Options
 
-| Option                  | Purpose                                                            |
-| ----------------------- | ------------------------------------------------------------------ |
-| `WithSplit(mode)`       | `SplitNone` (default) or `SplitPerLeaf` (planned).                 |
-| `WithOverview(bool)`    | Emit an overview skill in split mode.                              |
-| `WithTemplate(t)`       | Replace the default body renderer with a `text/template.Template`. |
-| `WithFilenamePrefix(p)` | Prepend a prefix to every generated filename.                      |
-| `WithSkip(pred)`        | Custom predicate for excluding commands.                           |
-| `WithIncludeBuiltins()` | Keep cobra's auto-injected `help` / `completion` in the output.    |
+| Option                  | Purpose                                                                |
+| ----------------------- | ---------------------------------------------------------------------- |
+| `WithSplit(mode)`       | `SplitNone` (default, single skill) or `SplitPerLeaf` (one per leaf).  |
+| `WithOverview(bool)`    | In split mode, also emit an overview skill that lists the leaves.      |
+| `WithTemplate(t)`       | Replace the single-mode body renderer with a `text/template.Template`. |
+| `WithFilenamePrefix(p)` | Prepend a prefix to every generated filename.                          |
+| `WithSkip(pred)`        | Custom predicate for excluding commands.                               |
+| `WithIncludeBuiltins()` | Keep cobra's auto-injected `help` / `completion` in the output.        |
 
 By default, cobra's built-in `help` and `completion` subcommands are filtered out because agents don't need them. User-defined commands with those names at deeper levels are _not_ filtered.
 
@@ -133,6 +133,21 @@ Try it:
 go run ./example skills print
 ```
 
+## Split mode
+
+Default output is a single skill covering the whole CLI. Large tools with many independent subcommands may prefer **split mode**: one skill per leaf command so agents can load only the one that matches.
+
+```go
+gen := skillgen.New(root,
+    skillgen.WithSplit(skillgen.SplitPerLeaf),
+    skillgen.WithOverview(true), // optional: also emit a root overview
+)
+```
+
+Filenames are slugged from the full command path — `mytool deploy` becomes `mytool-deploy.md`, `mytool config set` becomes `mytool-config-set.md`. The optional overview skill uses the root name (`mytool.md`) and lists every leaf with a short description.
+
+Rule of thumb: ≤ ~10 commands → single mode; dozens of commands or independent command groups → split mode.
+
 ## Releasing
 
 Releases are cut by pushing a semver tag to `main`:
@@ -151,9 +166,9 @@ Pre-release tags (e.g. `v0.2.0-rc.1`) are marked as pre-releases on GitHub.
 - **M1** — single-skill mode, cobra integration, Claude Code-compatible frontmatter ✅
 - **M2** — annotations and template override hook ✅
 - **M3** — `skills generate` / `skills print` subcommands, stable filenames, validation ✅
-- **M4** — split mode (one skill per leaf) — planned
+- **M4** — split mode (one skill per leaf + optional overview) ✅
 
-See [`PRD.md`](./PRD.md) for the full design.
+See [`PRD.md`](./PRD.md) for the full design and [`CHANGELOG.md`](./CHANGELOG.md) for per-version changes.
 
 ## License
 

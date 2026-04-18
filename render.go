@@ -199,6 +199,83 @@ func writeCommandSection(b *strings.Builder, c CommandData) {
 	}
 }
 
+// renderLeafBody produces the body of a split-mode leaf skill — a standalone
+// Markdown document covering a single command.
+func renderLeafBody(c CommandData, desc string) string {
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "# %s\n\n", c.Path)
+
+	if intro := firstNonEmpty(c.Long, c.Short); intro != "" {
+		b.WriteString(intro)
+		b.WriteString("\n\n")
+	}
+
+	b.WriteString("## When to use\n\n")
+	b.WriteString(desc)
+	b.WriteString("\n\n")
+
+	if c.UseLine != "" {
+		b.WriteString("## Usage\n\n")
+		fmt.Fprintf(&b, "```\n%s\n```\n\n", c.UseLine)
+	}
+
+	if len(c.Flags) > 0 {
+		b.WriteString("## Flags\n\n")
+		writeFlagList(&b, c.Flags)
+		b.WriteString("\n")
+	}
+
+	if c.Example != "" {
+		b.WriteString("## Example\n\n")
+		fmt.Fprintf(&b, "```\n%s\n```\n\n", c.Example)
+	}
+
+	if c.Extra != "" {
+		b.WriteString(c.Extra)
+		b.WriteString("\n\n")
+	}
+
+	return b.String()
+}
+
+// renderOverviewBody produces the body of a split-mode overview skill — a
+// short index that points the agent at each per-leaf skill.
+func renderOverviewBody(root CommandData, leaves []CommandData, desc string) string {
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "# %s\n\n", root.Path)
+
+	if intro := firstNonEmpty(root.Long, root.Short); intro != "" {
+		b.WriteString(intro)
+		b.WriteString("\n\n")
+	}
+
+	b.WriteString("## When to use\n\n")
+	b.WriteString(desc)
+	b.WriteString("\n\n")
+
+	if rootFlags := nonEmptyFlags(root.Flags); len(rootFlags) > 0 {
+		b.WriteString("## Global flags\n\n")
+		writeFlagList(&b, rootFlags)
+		b.WriteString("\n")
+	}
+
+	b.WriteString("## Commands\n\n")
+	b.WriteString("Each subcommand has its own skill:\n\n")
+	for _, leaf := range leaves {
+		summary := firstNonEmpty(leaf.Short, firstLine(leaf.Long))
+		if summary != "" {
+			fmt.Fprintf(&b, "- `%s` — %s\n", leaf.Path, summary)
+		} else {
+			fmt.Fprintf(&b, "- `%s`\n", leaf.Path)
+		}
+	}
+	b.WriteString("\n")
+
+	return b.String()
+}
+
 func writeFlagList(b *strings.Builder, flags []FlagData) {
 	for _, f := range flags {
 		fmt.Fprintf(b, "- `%s`", f.Ref())
