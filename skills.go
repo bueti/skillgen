@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"text/template"
 
@@ -49,7 +50,8 @@ type SplitMode int
 const (
 	// SplitNone writes a single skill describing the whole CLI (the default).
 	SplitNone SplitMode = iota
-	// SplitPerLeaf writes one skill per leaf command. Not yet implemented.
+	// SplitPerLeaf writes one skill per leaf command. Enable WithOverview to
+	// additionally emit a single overview skill that lists all leaves.
 	SplitPerLeaf
 )
 
@@ -139,7 +141,7 @@ func (g *Generator) Skills() ([]Skill, error) {
 		}
 		return []Skill{s}, nil
 	case SplitPerLeaf:
-		return nil, fmt.Errorf("skillgen: SplitPerLeaf is not implemented yet")
+		return g.splitSkills()
 	default:
 		return nil, fmt.Errorf("skillgen: unknown split mode %d", g.split)
 	}
@@ -247,4 +249,138 @@ func (g *Generator) renderBody(d TemplateData) (string, error) {
 		return "", fmt.Errorf("skillgen: render template: %w", err)
 	}
 	return buf.String(), nil
+}
+
+// splitSkills renders one skill per leaf command, optionally prefixed by an
+// overview skill that lists the leaves.
+func (g *Generator) splitSkills() ([]Skill, error) {
+	leaves := g.collectLeafCommands(g.root)
+	if len(leaves) == 0 {
+		return nil, fmt.Errorf("skillgen: no visible commands to emit skills for")
+	}
+
+	var out []Skill
+
+	// Overview only makes sense when there's more than one leaf — otherwise it
+	// would be a second copy of the same skill (or worse, collide on filename).
+	if g.overview && len(leaves) > 1 {
+		ov, err := g.overviewSkill(leaves)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, ov)
+	}
+
+	for _, c := range leaves {
+		s, err := g.leafSkill(c)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+
+	return out, nil
+}
+
+// collectLeafCommands returns the tree's leaves — commands with no visible
+// children. Hidden / skill.skip / predicate-excluded commands are pruned
+// before leafness is decided, so a parent whose only children are all skipped
+// is itself treated as a leaf.
+func (g *Generator) collectLeafCommands(root *cobra.Command) []*cobra.Command {
+	if root == nil || g.shouldSkip(root) {
+		return nil
+	}
+
+	var leaves []*cobra.Command
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		var visible []*cobra.Command
+		for _, sub := range c.Commands() {
+			if !g.shouldSkip(sub) {
+				visible = append(visible, sub)
+			}
+		}
+		if len(visible) == 0 {
+			leaves = append(leaves, c)
+			return
+		}
+		for _, sub := range visible {
+			walk(sub)
+		}
+	}
+	walk(root)
+
+	sort.SliceStable(leaves, func(i, j int) bool {
+		return leaves[i].CommandPath() < leaves[j].CommandPath()
+	})
+	return leaves
+}
+
+func (g *Generator) leafSkill(c *cobra.Command) (Skill, error) {
+	name := firstNonEmpty(c.Annotations[AnnotationName], slug(c.CommandPath()))
+	if name == "" {
+		return Skill{}, fmt.Errorf("skillgen: leaf command at %q has no usable name", c.CommandPath())
+	}
+
+	desc := firstNonEmpty(
+		c.Annotations[AnnotationDescription],
+		c.Short,
+		firstLine(c.Long),
+	)
+	if trig := strings.TrimSpace(c.Annotations[AnnotationTrigger]); trig != "" {
+		base := strings.TrimRight(desc, ".")
+		if base != "" {
+			base += ". "
+		}
+		desc = base + "Use when the user asks to " + trig + "."
+	}
+	desc = collapseSpace(desc)
+	if desc == "" {
+		return Skill{}, fmt.Errorf("skillgen: leaf command %q has no description — set Short, Long, or the %q annotation", c.CommandPath(), AnnotationDescription)
+	}
+
+	body := renderLeafBody(commandData(c), desc)
+	return Skill{
+		Name:        name,
+		Description: desc,
+		Body:        body,
+		Filename:    g.prefix + name + ".md",
+	}, nil
+}
+
+func (g *Generator) overviewSkill(leaves []*cobra.Command) (Skill, error) {
+	name := firstNonEmpty(g.root.Annotations[AnnotationName], slug(g.root.Name()))
+	if name == "" {
+		return Skill{}, fmt.Errorf("skillgen: root command has no usable name for the overview skill")
+	}
+
+	desc := firstNonEmpty(
+		g.root.Annotations[AnnotationDescription],
+		g.root.Short,
+		firstLine(g.root.Long),
+	)
+	if trig := strings.TrimSpace(g.root.Annotations[AnnotationTrigger]); trig != "" {
+		base := strings.TrimRight(desc, ".")
+		if base != "" {
+			base += ". "
+		}
+		desc = base + "Use when the user asks to " + trig + "."
+	}
+	desc = collapseSpace(desc)
+	if desc == "" {
+		return Skill{}, fmt.Errorf("skillgen: root command %q has no description for the overview — set Short, Long, or the %q annotation", g.root.Name(), AnnotationDescription)
+	}
+
+	leafData := make([]CommandData, len(leaves))
+	for i, c := range leaves {
+		leafData[i] = commandData(c)
+	}
+	body := renderOverviewBody(commandData(g.root), leafData, desc)
+
+	return Skill{
+		Name:        name,
+		Description: desc,
+		Body:        body,
+		Filename:    g.prefix + name + ".md",
+	}, nil
 }

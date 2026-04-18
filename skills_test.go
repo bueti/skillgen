@@ -200,10 +200,157 @@ func TestSkipPredicate(t *testing.T) {
 	}
 }
 
-func TestSplitPerLeafNotImplemented(t *testing.T) {
-	_, err := New(newTestRoot(), WithSplit(SplitPerLeaf)).Skills()
-	if err == nil {
-		t.Fatal("expected not-implemented error")
+func TestSplitPerLeafBasic(t *testing.T) {
+	skills, err := New(newTestRoot(), WithSplit(SplitPerLeaf)).Skills()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// test root has: build (leaf), deploy (leaf), secret (hidden), internal (skipped)
+	if len(skills) != 2 {
+		t.Fatalf("want 2 skills, got %d", len(skills))
+	}
+	names := map[string]bool{}
+	for _, s := range skills {
+		names[s.Name] = true
+	}
+	if !names["mytool-build"] {
+		t.Errorf("missing mytool-build skill")
+	}
+	if !names["mytool-deploy"] {
+		t.Errorf("missing mytool-deploy skill")
+	}
+}
+
+func TestSplitPerLeafLeafContent(t *testing.T) {
+	skills, _ := New(newTestRoot(), WithSplit(SplitPerLeaf)).Skills()
+	var deploy Skill
+	for _, s := range skills {
+		if s.Name == "mytool-deploy" {
+			deploy = s
+			break
+		}
+	}
+	if deploy.Name == "" {
+		t.Fatal("no mytool-deploy skill")
+	}
+	if !strings.Contains(deploy.Body, "# mytool deploy") {
+		t.Errorf("leaf body missing heading:\n%s", deploy.Body)
+	}
+	if !strings.Contains(deploy.Body, "`--env` (required)") {
+		t.Errorf("required flag not rendered:\n%s", deploy.Body)
+	}
+	if !strings.Contains(deploy.Description, "Use when the user asks to deploy, promote, ship, or release a service") {
+		t.Errorf("trigger not appended to leaf description: %q", deploy.Description)
+	}
+	if deploy.Filename != "mytool-deploy.md" {
+		t.Errorf("filename: got %q, want mytool-deploy.md", deploy.Filename)
+	}
+}
+
+func TestSplitPerLeafNested(t *testing.T) {
+	root := &cobra.Command{Use: "mytool", Short: "mytool does things"}
+	config := &cobra.Command{Use: "config", Short: "config management"}
+	get := &cobra.Command{Use: "get <key>", Short: "get a config value"}
+	set := &cobra.Command{Use: "set <key> <val>", Short: "set a config value"}
+	config.AddCommand(get, set)
+	root.AddCommand(config)
+
+	skills, err := New(root, WithSplit(SplitPerLeaf)).Skills()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skills) != 2 {
+		t.Fatalf("want 2 leaf skills, got %d", len(skills))
+	}
+	want := []string{"mytool-config-get", "mytool-config-set"}
+	for i, s := range skills {
+		if s.Name != want[i] {
+			t.Errorf("skill %d: got %q, want %q", i, s.Name, want[i])
+		}
+	}
+}
+
+func TestSplitPerLeafRootOnly(t *testing.T) {
+	root := &cobra.Command{Use: "solo", Short: "a single-command CLI"}
+	skills, err := New(root, WithSplit(SplitPerLeaf)).Skills()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skills) != 1 {
+		t.Fatalf("want 1 skill, got %d", len(skills))
+	}
+	if skills[0].Name != "solo" {
+		t.Errorf("name: got %q, want %q", skills[0].Name, "solo")
+	}
+}
+
+func TestSplitPerLeafWithOverview(t *testing.T) {
+	skills, err := New(newTestRoot(), WithSplit(SplitPerLeaf), WithOverview(true)).Skills()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skills) != 3 {
+		t.Fatalf("want 3 skills (overview + 2 leaves), got %d", len(skills))
+	}
+	if skills[0].Name != "mytool" {
+		t.Errorf("overview should be first, got %q", skills[0].Name)
+	}
+	if !strings.Contains(skills[0].Body, "## Commands") {
+		t.Errorf("overview missing ## Commands section:\n%s", skills[0].Body)
+	}
+	if !strings.Contains(skills[0].Body, "- `mytool build`") {
+		t.Errorf("overview missing build entry:\n%s", skills[0].Body)
+	}
+	if !strings.Contains(skills[0].Body, "- `mytool deploy`") {
+		t.Errorf("overview missing deploy entry:\n%s", skills[0].Body)
+	}
+}
+
+func TestSplitPerLeafOverviewSuppressedForSingleLeaf(t *testing.T) {
+	root := &cobra.Command{Use: "solo", Short: "a single-command CLI"}
+	skills, err := New(root, WithSplit(SplitPerLeaf), WithOverview(true)).Skills()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skills) != 1 {
+		t.Fatalf("overview must be suppressed when only one leaf exists; got %d skills", len(skills))
+	}
+}
+
+func TestSplitPerLeafRespectsHiddenAndSkip(t *testing.T) {
+	skills, _ := New(newTestRoot(), WithSplit(SplitPerLeaf)).Skills()
+	for _, s := range skills {
+		if strings.Contains(s.Name, "secret") {
+			t.Errorf("hidden command leaked: %q", s.Name)
+		}
+		if strings.Contains(s.Name, "internal") {
+			t.Errorf("skill.skip command leaked: %q", s.Name)
+		}
+	}
+}
+
+func TestSplitPerLeafDeterministic(t *testing.T) {
+	a, _ := New(newTestRoot(), WithSplit(SplitPerLeaf), WithOverview(true)).Skills()
+	b, _ := New(newTestRoot(), WithSplit(SplitPerLeaf), WithOverview(true)).Skills()
+	if len(a) != len(b) {
+		t.Fatalf("length mismatch: %d vs %d", len(a), len(b))
+	}
+	for i := range a {
+		if !bytes.Equal(a[i].Bytes(), b[i].Bytes()) {
+			t.Errorf("skill %d (%q) not deterministic", i, a[i].Name)
+		}
+	}
+}
+
+func TestSplitPerLeafWriteTo(t *testing.T) {
+	dir := t.TempDir()
+	if err := New(newTestRoot(), WithSplit(SplitPerLeaf), WithOverview(true)).WriteTo(dir); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"mytool.md", "mytool-build.md", "mytool-deploy.md"} {
+		if _, err := os.Stat(filepath.Join(dir, want)); err != nil {
+			t.Errorf("missing %s: %v", want, err)
+		}
 	}
 }
 
