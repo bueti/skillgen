@@ -172,6 +172,28 @@ Before consulting annotations, skillgen extracts free signal straight from the c
 
 Annotations *augment* this mined signal rather than replace it — an alias list alone is often enough to skip writing `skill.trigger` yourself.
 
+## Sibling collapse
+
+When a parent command's visible children all accept exactly the same local flags (name, shorthand, type, required-ness, and usage text), skillgen hoists the flag table up to the parent and omits the per-child repetition:
+
+```markdown
+### `mytool actions`
+
+Shared subcommand flags (apply to every subcommand below):
+
+- `-p, --instances` (required) — target instances
+- `-r, --reason` (required) — justification for the action
+
+#### `mytool actions cycle`
+Move past a bad node.
+
+#### `mytool actions triage`
+Preserve for investigation.
+…
+```
+
+For a CLI with six siblings taking the same two flags, that's ~45 lines of duplication gone. A single differing flag across siblings disables the collapse — the agent shouldn't ever see a flag list that's subtly wrong. Split mode renders each leaf standalone, so collapse doesn't apply there.
+
 ## Targets
 
 Default output is a minimal, interoperable frontmatter (`name` + `description`). Opt into a richer host-specific shape with `WithTarget`:
