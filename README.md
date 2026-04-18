@@ -133,6 +133,19 @@ Try it:
 go run ./example skills print
 ```
 
+## Releasing
+
+Releases are cut by pushing a semver tag to `main`:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The `Release` workflow verifies the tag lives on `main`, runs the test suite, and drafts a GitHub Release with auto-generated notes. `proxy.golang.org` picks up the tag automatically, so `go get github.com/bueti/skillgen@v0.1.0` works immediately.
+
+Pre-release tags (e.g. `v0.2.0-rc.1`) are marked as pre-releases on GitHub.
+
 ## Status
 
 - **M1** — single-skill mode, cobra integration, Claude Code-compatible frontmatter ✅
