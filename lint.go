@@ -2,6 +2,7 @@ package skillgen
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -64,6 +65,9 @@ func (g *Generator) Lint() []Issue {
 
 	var issues []Issue
 	g.lintCommand(g.root, true, &issues)
+	// Spec-limit checks run against the rendered skills so we catch frontmatter
+	// and body violations, not just command-tree structure.
+	g.lintSkillOutput(&issues)
 
 	sort.SliceStable(issues, func(i, j int) bool {
 		if issues[i].Command != issues[j].Command {
@@ -226,6 +230,104 @@ func lintSiblingVariance(parentPath string, siblings []*cobra.Command) *Issue {
 		Command: parentPath,
 		Field:   "sibling-variance",
 		Message: fmt.Sprintf("subcommand description lengths vary widely (%d..%d chars) — consider levelling up the shorter siblings so agents get symmetric detail", minLen, maxLen),
+	}
+}
+
+// skillNamePattern enforces the agentskills.io spec: lowercase a-z / 0-9 /
+// hyphens, no leading or trailing hyphen, no consecutive hyphens, 1+ chars.
+// Length is checked separately so we can report it distinctly.
+var skillNamePattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+
+// lintSkillOutput renders the skill set and reports spec-limit violations.
+// If generation itself fails we surface that as an error; otherwise we check
+// name / description / compatibility / body limits against agentskills.io
+// constraints.
+func (g *Generator) lintSkillOutput(out *[]Issue) {
+	skills, err := g.Skills()
+	if err != nil {
+		*out = append(*out, Issue{
+			Level:   IssueError,
+			Command: g.root.CommandPath(),
+			Field:   "generation",
+			Message: fmt.Sprintf("skill generation failed: %v", err),
+		})
+		return
+	}
+	for _, s := range skills {
+		g.lintSkillAgainstSpec(s, out)
+	}
+}
+
+func (g *Generator) lintSkillAgainstSpec(s Skill, out *[]Issue) {
+	// Use the skill name as the locator, prefixed "skill:" to distinguish from
+	// command paths in the sorted output.
+	where := "skill:" + s.Name
+	if s.Name == "" {
+		where = "skill:(unnamed)"
+	}
+
+	// Name — hard spec constraint; invalid names break agent loaders.
+	switch {
+	case len(s.Name) == 0:
+		*out = append(*out, Issue{
+			Level: IssueError, Command: where, Field: "name",
+			Message: "name is empty",
+		})
+	case len(s.Name) > SpecMaxNameLength:
+		*out = append(*out, Issue{
+			Level: IssueError, Command: where, Field: "name",
+			Message: fmt.Sprintf("name is %d chars; spec limit is %d", len(s.Name), SpecMaxNameLength),
+		})
+	}
+	if s.Name != "" && !skillNamePattern.MatchString(s.Name) {
+		*out = append(*out, Issue{
+			Level: IssueError, Command: where, Field: "name",
+			Message: fmt.Sprintf("name %q does not match the spec regex (lowercase a-z/0-9/hyphens, no leading/trailing/consecutive hyphens)", s.Name),
+		})
+	}
+
+	// Description — hard spec limits.
+	if n := len(s.Description); n == 0 {
+		*out = append(*out, Issue{
+			Level: IssueError, Command: where, Field: "description",
+			Message: "description is empty",
+		})
+	} else if n > SpecMaxDescriptionLength {
+		*out = append(*out, Issue{
+			Level: IssueError, Command: where, Field: "description",
+			Message: fmt.Sprintf("description is %d chars; spec limit is %d", n, SpecMaxDescriptionLength),
+		})
+	}
+
+	// Compatibility — spec caps at 500 chars when present.
+	for _, f := range s.Frontmatter {
+		if f.Key != "compatibility" || f.Value == "" {
+			continue
+		}
+		if n := len(f.Value); n > SpecMaxCompatibilityLength {
+			*out = append(*out, Issue{
+				Level: IssueError, Command: where, Field: "compatibility",
+				Message: fmt.Sprintf("compatibility is %d chars; spec limit is %d", n, SpecMaxCompatibilityLength),
+			})
+		}
+	}
+
+	// Body size — spec *recommends* soft limits, so warn rather than error.
+	if tokens := EstimateTokens([]byte(s.Body)); tokens > SpecMaxBodyTokens {
+		*out = append(*out, Issue{
+			Level: IssueWarning, Command: where, Field: "body-tokens",
+			Message: fmt.Sprintf("body is ~%d tokens; spec recommends ≤ %d — consider split mode or trimming", tokens, SpecMaxBodyTokens),
+		})
+	}
+	lines := strings.Count(s.Body, "\n")
+	if s.Body != "" && !strings.HasSuffix(s.Body, "\n") {
+		lines++
+	}
+	if lines > SpecMaxBodyLines {
+		*out = append(*out, Issue{
+			Level: IssueWarning, Command: where, Field: "body-lines",
+			Message: fmt.Sprintf("body is %d lines; spec recommends ≤ %d — consider moving detail to referenced files", lines, SpecMaxBodyLines),
+		})
 	}
 }
 
