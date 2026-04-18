@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Added
+
+- **Cobra field mining.** `cmd.Aliases` now render as an `Aliases: …` note and auto-derive a trigger suffix when `skill.trigger` isn't set. `cmd.Deprecated` renders a prominent `> **Deprecated:** …` callout. Deprecated flags (`pflag.Flag.Deprecated`) are filtered from the rendered flag list entirely.
+- **Anti-pattern annotations.** `skill.avoid` and `skill.prefer-over` render dedicated `## Avoid` and `## Prefer over` sections in root / leaf bodies and inline bold labels inside nested command sections. These capture the single highest-value content in most real skills: what *not* to do.
+- **`skills lint` subcommand.** `Generator.Lint()` walks the same tree the generator walks and returns `[]Issue` (errors + warnings) for missing descriptions, overly short `Short`, leaves without trigger hints, and deprecated commands without a useful message. `skills lint` prints the report and exits non-zero on errors; `--strict` promotes warnings to errors for CI enforcement. Respects Hidden, `skill.skip`, and the `WithSkip` predicate so lint and generation stay in sync.
+
 ## [0.2.0] — 2026-04-18
 
 ### Added

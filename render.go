@@ -20,16 +20,20 @@ type TemplateData struct {
 
 // CommandData describes one cobra command for rendering.
 type CommandData struct {
-	Name     string // leaf name, e.g. "deploy"
-	Path     string // full path, e.g. "mytool deploy"
-	UseLine  string // cobra's UseLine, e.g. "mytool deploy <service>"
-	Short    string
-	Long     string
-	Example  string
-	Flags    []FlagData
-	Extra    string // skill.examples annotation contents
-	Depth    int    // 1 for direct child of root, 2 for grandchild, ...
-	HasSubs  bool   // true if this command has at least one visible subcommand
+	Name       string   // leaf name, e.g. "deploy"
+	Path       string   // full path, e.g. "mytool deploy"
+	UseLine    string   // cobra's UseLine, e.g. "mytool deploy <service>"
+	Short      string
+	Long       string
+	Example    string
+	Aliases    []string // cobra.Command.Aliases
+	Deprecated string   // cobra.Command.Deprecated (empty if not deprecated)
+	Flags      []FlagData
+	Avoid      string // skill.avoid annotation contents
+	PreferOver string // skill.prefer-over annotation contents
+	Extra      string // skill.examples annotation contents
+	Depth      int    // 1 for direct child of root, 2 for grandchild, ...
+	HasSubs    bool   // true if this command has at least one visible subcommand
 }
 
 // FlagData describes one pflag.Flag.
@@ -53,15 +57,19 @@ func (f FlagData) Ref() string {
 
 func commandData(c *cobra.Command) CommandData {
 	d := CommandData{
-		Name:    c.Name(),
-		Path:    c.CommandPath(),
-		UseLine: c.UseLine(),
-		Short:   strings.TrimSpace(c.Short),
-		Long:    strings.TrimSpace(c.Long),
-		Example: strings.TrimRight(c.Example, "\n"),
-		Extra:   strings.TrimSpace(c.Annotations[AnnotationExamples]),
-		Flags:   collectFlags(c),
-		HasSubs: hasVisibleSubcommands(c),
+		Name:       c.Name(),
+		Path:       c.CommandPath(),
+		UseLine:    c.UseLine(),
+		Short:      strings.TrimSpace(c.Short),
+		Long:       strings.TrimSpace(c.Long),
+		Example:    strings.TrimRight(c.Example, "\n"),
+		Aliases:    append([]string(nil), c.Aliases...),
+		Deprecated: strings.TrimSpace(c.Deprecated),
+		Avoid:      strings.TrimSpace(c.Annotations[AnnotationAvoid]),
+		PreferOver: strings.TrimSpace(c.Annotations[AnnotationPreferOver]),
+		Extra:      strings.TrimSpace(c.Annotations[AnnotationExamples]),
+		Flags:      collectFlags(c),
+		HasSubs:    hasVisibleSubcommands(c),
 	}
 	// Depth relative to root = number of spaces in the command path.
 	d.Depth = strings.Count(d.Path, " ")
@@ -81,7 +89,9 @@ func collectFlags(c *cobra.Command) []FlagData {
 	seen := map[string]bool{}
 	var out []FlagData
 	add := func(f *pflag.Flag, persistent bool) {
-		if f.Hidden || seen[f.Name] {
+		// Skip hidden and deprecated flags — deprecated is an explicit author
+		// signal that the flag should not be suggested.
+		if f.Hidden || f.Deprecated != "" || seen[f.Name] {
 			return
 		}
 		seen[f.Name] = true
@@ -132,10 +142,14 @@ func defaultRender(d TemplateData) string {
 
 	fmt.Fprintf(&b, "# %s\n\n", d.Root.Path)
 
+	writeDeprecatedCallout(&b, d.Root.Deprecated)
+
 	if intro := firstNonEmpty(d.Root.Long, d.Root.Short); intro != "" {
 		b.WriteString(intro)
 		b.WriteString("\n\n")
 	}
+
+	writeAliasesLine(&b, d.Root.Aliases)
 
 	b.WriteString("## When to use\n\n")
 	b.WriteString(d.Description)
@@ -150,6 +164,9 @@ func defaultRender(d TemplateData) string {
 		b.WriteString("## Example\n\n")
 		fmt.Fprintf(&b, "```\n%s\n```\n\n", d.Root.Example)
 	}
+
+	writeNamedSection(&b, "Avoid", d.Root.Avoid)
+	writeNamedSection(&b, "Prefer over", d.Root.PreferOver)
 
 	if rootFlags := nonEmptyFlags(d.Root.Flags); len(rootFlags) > 0 {
 		b.WriteString("## Global flags\n\n")
@@ -172,10 +189,14 @@ func writeCommandSection(b *strings.Builder, c CommandData) {
 	level := min(2+c.Depth, 4)
 	fmt.Fprintf(b, "%s `%s`\n\n", strings.Repeat("#", level), c.Path)
 
+	writeDeprecatedCallout(b, c.Deprecated)
+
 	if body := firstNonEmpty(c.Long, c.Short); body != "" {
 		b.WriteString(body)
 		b.WriteString("\n\n")
 	}
+
+	writeAliasesLine(b, c.Aliases)
 
 	if c.UseLine != "" && c.UseLine != c.Path {
 		fmt.Fprintf(b, "Usage: `%s`\n\n", c.UseLine)
@@ -193,6 +214,9 @@ func writeCommandSection(b *strings.Builder, c CommandData) {
 		fmt.Fprintf(b, "```\n%s\n```\n\n", c.Example)
 	}
 
+	writeInlineLabel(b, "Avoid", c.Avoid)
+	writeInlineLabel(b, "Prefer over", c.PreferOver)
+
 	if c.Extra != "" {
 		b.WriteString(c.Extra)
 		b.WriteString("\n\n")
@@ -206,10 +230,14 @@ func renderLeafBody(c CommandData, desc string) string {
 
 	fmt.Fprintf(&b, "# %s\n\n", c.Path)
 
+	writeDeprecatedCallout(&b, c.Deprecated)
+
 	if intro := firstNonEmpty(c.Long, c.Short); intro != "" {
 		b.WriteString(intro)
 		b.WriteString("\n\n")
 	}
+
+	writeAliasesLine(&b, c.Aliases)
 
 	b.WriteString("## When to use\n\n")
 	b.WriteString(desc)
@@ -231,6 +259,9 @@ func renderLeafBody(c CommandData, desc string) string {
 		fmt.Fprintf(&b, "```\n%s\n```\n\n", c.Example)
 	}
 
+	writeNamedSection(&b, "Avoid", c.Avoid)
+	writeNamedSection(&b, "Prefer over", c.PreferOver)
+
 	if c.Extra != "" {
 		b.WriteString(c.Extra)
 		b.WriteString("\n\n")
@@ -246,14 +277,21 @@ func renderOverviewBody(root CommandData, leaves []CommandData, desc string) str
 
 	fmt.Fprintf(&b, "# %s\n\n", root.Path)
 
+	writeDeprecatedCallout(&b, root.Deprecated)
+
 	if intro := firstNonEmpty(root.Long, root.Short); intro != "" {
 		b.WriteString(intro)
 		b.WriteString("\n\n")
 	}
 
+	writeAliasesLine(&b, root.Aliases)
+
 	b.WriteString("## When to use\n\n")
 	b.WriteString(desc)
 	b.WriteString("\n\n")
+
+	writeNamedSection(&b, "Avoid", root.Avoid)
+	writeNamedSection(&b, "Prefer over", root.PreferOver)
 
 	if rootFlags := nonEmptyFlags(root.Flags); len(rootFlags) > 0 {
 		b.WriteString("## Global flags\n\n")
@@ -274,6 +312,47 @@ func renderOverviewBody(root CommandData, leaves []CommandData, desc string) str
 	b.WriteString("\n")
 
 	return b.String()
+}
+
+// writeDeprecatedCallout renders a visible callout when a command is deprecated.
+func writeDeprecatedCallout(b *strings.Builder, msg string) {
+	msg = strings.TrimSpace(msg)
+	if msg == "" {
+		return
+	}
+	fmt.Fprintf(b, "> **Deprecated:** %s\n\n", msg)
+}
+
+// writeAliasesLine renders a one-line aliases note when a command has any.
+func writeAliasesLine(b *strings.Builder, aliases []string) {
+	if len(aliases) == 0 {
+		return
+	}
+	refs := make([]string, len(aliases))
+	for i, a := range aliases {
+		refs[i] = "`" + a + "`"
+	}
+	fmt.Fprintf(b, "Aliases: %s\n\n", strings.Join(refs, ", "))
+}
+
+// writeNamedSection renders a "## <heading>" section with free-form content,
+// skipping cleanly when content is empty.
+func writeNamedSection(b *strings.Builder, heading, content string) {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return
+	}
+	fmt.Fprintf(b, "## %s\n\n%s\n\n", heading, content)
+}
+
+// writeInlineLabel renders a bold-labeled paragraph inside a nested section,
+// for use within writeCommandSection where an h2 heading would be too loud.
+func writeInlineLabel(b *strings.Builder, label, content string) {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return
+	}
+	fmt.Fprintf(b, "**%s:** %s\n\n", label, content)
 }
 
 func writeFlagList(b *strings.Builder, flags []FlagData) {
@@ -312,6 +391,49 @@ func nonEmptyFlags(flags []FlagData) []FlagData {
 		out = append(out, f)
 	}
 	return out
+}
+
+// deriveDescription composes the frontmatter `description` for a command.
+// skill.description takes precedence; otherwise we fall back to Short, then
+// the first line of Long. A skill.trigger annotation produces an explicit
+// "Use when the user asks to X" suffix. If the annotation is absent, we
+// fall back to cobra.Command.Aliases so alias lists produce trigger signal
+// for free.
+func deriveDescription(c *cobra.Command) string {
+	desc := firstNonEmpty(
+		c.Annotations[AnnotationDescription],
+		c.Short,
+		firstLine(c.Long),
+	)
+
+	trig := strings.TrimSpace(c.Annotations[AnnotationTrigger])
+	if trig == "" && len(c.Aliases) > 0 {
+		names := append([]string{c.Name()}, c.Aliases...)
+		trig = joinOr(names)
+	}
+
+	if trig != "" {
+		base := strings.TrimRight(desc, ".")
+		if base != "" {
+			base += ". "
+		}
+		desc = base + "Use when the user asks to " + trig + "."
+	}
+	return collapseSpace(desc)
+}
+
+// joinOr returns a natural-language "a, b, or c" join (Oxford comma for 3+).
+func joinOr(vs []string) string {
+	switch len(vs) {
+	case 0:
+		return ""
+	case 1:
+		return vs[0]
+	case 2:
+		return vs[0] + " or " + vs[1]
+	default:
+		return strings.Join(vs[:len(vs)-1], ", ") + ", or " + vs[len(vs)-1]
+	}
 }
 
 // --- small string helpers ---

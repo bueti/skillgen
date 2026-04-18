@@ -26,6 +26,7 @@ func NewSkillsCmd(root *cobra.Command, opts ...Option) *cobra.Command {
 
 	skills.AddCommand(newGenerateCmd(root, opts))
 	skills.AddCommand(newPrintCmd(root, opts))
+	skills.AddCommand(newLintCmd(root, opts))
 	return skills
 }
 
@@ -61,6 +62,39 @@ func newPrintCmd(root *cobra.Command, opts []Option) *cobra.Command {
 			return printSkills(cmd.OutOrStdout(), root, opts)
 		},
 	}
+}
+
+func newLintCmd(root *cobra.Command, opts []Option) *cobra.Command {
+	var strict bool
+	cmd := &cobra.Command{
+		Use:   "lint",
+		Short: "Report missing or low-quality skill signal in the command tree",
+		Long: "Walk the command tree and report issues that would produce a low-quality " +
+			"skill — missing descriptions, missing trigger hints, deprecated commands " +
+			"without a replacement message, and so on.\n\n" +
+			"Exit code is 1 when any error is found. With --strict, warnings are treated " +
+			"as errors too — use this in CI to enforce a quality bar.",
+		// Lint failures are not usage errors; keep CI output tidy.
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			issues := New(root, opts...).Lint()
+			cmd.Print(FormatIssues(issues))
+
+			var failing int
+			for _, iss := range issues {
+				if iss.Level == IssueError || (strict && iss.Level == IssueWarning) {
+					failing++
+				}
+			}
+			if failing > 0 {
+				return fmt.Errorf("%d lint finding(s) failed the check", failing)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&strict, "strict", false, "treat warnings as errors")
+	return cmd
 }
 
 func printSkills(w io.Writer, root *cobra.Command, opts []Option) error {

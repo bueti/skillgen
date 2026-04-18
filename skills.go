@@ -42,6 +42,16 @@ const (
 
 	// AnnotationExamples appends free-form example text to a command's body section.
 	AnnotationExamples = "skill.examples"
+
+	// AnnotationAvoid is free-form Markdown that appears under an "Avoid"
+	// heading. Use it to tell the agent what not to do — the single highest-
+	// value content in most real skills.
+	AnnotationAvoid = "skill.avoid"
+
+	// AnnotationPreferOver is free-form Markdown that appears under a "Prefer
+	// over" heading. Use it to point the agent away from alternative tools or
+	// commands this one supersedes (e.g. "Use instead of raw `kubectl delete`").
+	AnnotationPreferOver = "skill.prefer-over"
 )
 
 // SplitMode selects how many skill files are emitted.
@@ -207,19 +217,7 @@ func (g *Generator) singleSkill() (Skill, error) {
 		return Skill{}, fmt.Errorf("skillgen: root command has no usable name")
 	}
 
-	desc := firstNonEmpty(
-		g.root.Annotations[AnnotationDescription],
-		g.root.Short,
-		firstLine(g.root.Long),
-	)
-	if trig := strings.TrimSpace(g.root.Annotations[AnnotationTrigger]); trig != "" {
-		base := strings.TrimRight(desc, ".")
-		if base != "" {
-			base += ". "
-		}
-		desc = base + "Use when the user asks to " + trig + "."
-	}
-	desc = collapseSpace(desc)
+	desc := deriveDescription(g.root)
 	if desc == "" {
 		return Skill{}, fmt.Errorf("skillgen: root command %q has no description — set Short, Long, or the %q annotation", g.root.Name(), AnnotationDescription)
 	}
@@ -322,19 +320,7 @@ func (g *Generator) leafSkill(c *cobra.Command) (Skill, error) {
 		return Skill{}, fmt.Errorf("skillgen: leaf command at %q has no usable name", c.CommandPath())
 	}
 
-	desc := firstNonEmpty(
-		c.Annotations[AnnotationDescription],
-		c.Short,
-		firstLine(c.Long),
-	)
-	if trig := strings.TrimSpace(c.Annotations[AnnotationTrigger]); trig != "" {
-		base := strings.TrimRight(desc, ".")
-		if base != "" {
-			base += ". "
-		}
-		desc = base + "Use when the user asks to " + trig + "."
-	}
-	desc = collapseSpace(desc)
+	desc := deriveDescription(c)
 	if desc == "" {
 		return Skill{}, fmt.Errorf("skillgen: leaf command %q has no description — set Short, Long, or the %q annotation", c.CommandPath(), AnnotationDescription)
 	}
@@ -354,19 +340,7 @@ func (g *Generator) overviewSkill(leaves []*cobra.Command) (Skill, error) {
 		return Skill{}, fmt.Errorf("skillgen: root command has no usable name for the overview skill")
 	}
 
-	desc := firstNonEmpty(
-		g.root.Annotations[AnnotationDescription],
-		g.root.Short,
-		firstLine(g.root.Long),
-	)
-	if trig := strings.TrimSpace(g.root.Annotations[AnnotationTrigger]); trig != "" {
-		base := strings.TrimRight(desc, ".")
-		if base != "" {
-			base += ". "
-		}
-		desc = base + "Use when the user asks to " + trig + "."
-	}
-	desc = collapseSpace(desc)
+	desc := deriveDescription(g.root)
 	if desc == "" {
 		return Skill{}, fmt.Errorf("skillgen: root command %q has no description for the overview — set Short, Long, or the %q annotation", g.root.Name(), AnnotationDescription)
 	}
