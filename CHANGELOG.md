@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-04-18
+
 ### Added
 
 - **Cobra field mining.** `cmd.Aliases` now render as an `Aliases: …` note and auto-derive a trigger suffix when `skill.trigger` isn't set. `cmd.Deprecated` renders a prominent `> **Deprecated:** …` callout. Deprecated flags (`pflag.Flag.Deprecated`) are filtered from the rendered flag list entirely.
@@ -38,7 +40,8 @@ All notable changes to this project are documented in this file. The format is b
 - Auto-filter for cobra's injected `help` / `completion` subcommands (depth-aware, so a user-defined nested `help` is preserved).
 - MIT license, README, PRD, runnable `./example` CLI.
 
-[Unreleased]: https://github.com/bueti/skillgen/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/bueti/skillgen/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/bueti/skillgen/releases/tag/v0.3.0
 [0.2.0]: https://github.com/bueti/skillgen/releases/tag/v0.2.0
 [0.1.1]: https://github.com/bueti/skillgen/releases/tag/v0.1.1
 [0.1.0]: https://github.com/bueti/skillgen/releases/tag/v0.1.0
