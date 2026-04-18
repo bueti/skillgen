@@ -14,8 +14,13 @@ import (
 type TemplateData struct {
 	Name        string
 	Description string
-	Root        CommandData
-	Commands    []CommandData // flattened, depth-first, sorted by name at each level; root not included
+	// TriggerClause is the "Use when the user asks to …" sentence alone,
+	// separate from Description (which embeds it). Empty when no trigger
+	// signal is available — renderers must omit the "When to use" section
+	// in that case rather than restating Description.
+	TriggerClause string
+	Root          CommandData
+	Commands      []CommandData // flattened, depth-first, sorted by name at each level; root not included
 }
 
 // CommandData describes one cobra command for rendering.
@@ -151,9 +156,11 @@ func defaultRender(d TemplateData) string {
 
 	writeAliasesLine(&b, d.Root.Aliases)
 
-	b.WriteString("## When to use\n\n")
-	b.WriteString(d.Description)
-	b.WriteString("\n\n")
+	if d.TriggerClause != "" {
+		b.WriteString("## When to use\n\n")
+		b.WriteString(d.TriggerClause)
+		b.WriteString("\n\n")
+	}
 
 	if d.Root.UseLine != "" {
 		b.WriteString("## Usage\n\n")
@@ -225,7 +232,7 @@ func writeCommandSection(b *strings.Builder, c CommandData) {
 
 // renderLeafBody produces the body of a split-mode leaf skill — a standalone
 // Markdown document covering a single command.
-func renderLeafBody(c CommandData, desc string) string {
+func renderLeafBody(c CommandData, triggerClause string) string {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "# %s\n\n", c.Path)
@@ -239,9 +246,11 @@ func renderLeafBody(c CommandData, desc string) string {
 
 	writeAliasesLine(&b, c.Aliases)
 
-	b.WriteString("## When to use\n\n")
-	b.WriteString(desc)
-	b.WriteString("\n\n")
+	if triggerClause != "" {
+		b.WriteString("## When to use\n\n")
+		b.WriteString(triggerClause)
+		b.WriteString("\n\n")
+	}
 
 	if c.UseLine != "" {
 		b.WriteString("## Usage\n\n")
@@ -272,7 +281,7 @@ func renderLeafBody(c CommandData, desc string) string {
 
 // renderOverviewBody produces the body of a split-mode overview skill — a
 // short index that points the agent at each per-leaf skill.
-func renderOverviewBody(root CommandData, leaves []CommandData, desc string) string {
+func renderOverviewBody(root CommandData, leaves []CommandData, triggerClause string) string {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "# %s\n\n", root.Path)
@@ -286,9 +295,11 @@ func renderOverviewBody(root CommandData, leaves []CommandData, desc string) str
 
 	writeAliasesLine(&b, root.Aliases)
 
-	b.WriteString("## When to use\n\n")
-	b.WriteString(desc)
-	b.WriteString("\n\n")
+	if triggerClause != "" {
+		b.WriteString("## When to use\n\n")
+		b.WriteString(triggerClause)
+		b.WriteString("\n\n")
+	}
 
 	writeNamedSection(&b, "Avoid", root.Avoid)
 	writeNamedSection(&b, "Prefer over", root.PreferOver)
@@ -393,33 +404,63 @@ func nonEmptyFlags(flags []FlagData) []FlagData {
 	return out
 }
 
-// deriveDescription composes the frontmatter `description` for a command.
-// skill.description takes precedence; otherwise we fall back to Short, then
-// the first line of Long. A skill.trigger annotation produces an explicit
-// "Use when the user asks to X" suffix. If the annotation is absent, we
-// fall back to cobra.Command.Aliases so alias lists produce trigger signal
-// for free.
-func deriveDescription(c *cobra.Command) string {
-	desc := firstNonEmpty(
+// deriveDescription returns both the full composed description (for the
+// frontmatter) and, separately, the trigger clause alone (for the body's
+// "When to use" section). The clause is empty when no trigger signal is
+// available — in that case the body must omit the section instead of
+// restating the description.
+//
+// Trigger sources, in priority order:
+//  1. skill.trigger annotation — "Use when the user asks to <trig>."
+//  2. cobra.Command.Aliases — verbs; same phrasing as (1) with name + aliases.
+//  3. Visible child names — topics; "Use when the user asks about <kids>."
+//
+// (3) only fires for parents (commands with visible children), never for
+// leaves — a leaf's own name would just echo the description.
+func (g *Generator) deriveDescription(c *cobra.Command) (full, triggerClause string) {
+	base := firstNonEmpty(
 		c.Annotations[AnnotationDescription],
 		c.Short,
 		firstLine(c.Long),
 	)
 
-	trig := strings.TrimSpace(c.Annotations[AnnotationTrigger])
-	if trig == "" && len(c.Aliases) > 0 {
+	switch {
+	case strings.TrimSpace(c.Annotations[AnnotationTrigger]) != "":
+		trig := strings.TrimSpace(c.Annotations[AnnotationTrigger])
+		triggerClause = "Use when the user asks to " + trig + "."
+	case len(c.Aliases) > 0:
 		names := append([]string{c.Name()}, c.Aliases...)
-		trig = joinOr(names)
+		triggerClause = "Use when the user asks to " + joinOr(names) + "."
+	default:
+		if kids := g.visibleChildNames(c); len(kids) > 0 {
+			triggerClause = "Use when the user asks about " + joinOr(kids) + "."
+		}
 	}
 
-	if trig != "" {
-		base := strings.TrimRight(desc, ".")
-		if base != "" {
-			base += ". "
+	full = collapseSpace(base)
+	if triggerClause != "" {
+		if full != "" {
+			full = strings.TrimRight(full, ".") + ". " + triggerClause
+		} else {
+			full = triggerClause
 		}
-		desc = base + "Use when the user asks to " + trig + "."
 	}
-	return collapseSpace(desc)
+	return full, triggerClause
+}
+
+// visibleChildNames returns the sorted names of c's subcommands that would be
+// included in skill output (not Hidden, not skill.skip, not cobra builtins,
+// not excluded by WithSkip).
+func (g *Generator) visibleChildNames(c *cobra.Command) []string {
+	var names []string
+	for _, sub := range c.Commands() {
+		if g.shouldSkip(sub) {
+			continue
+		}
+		names = append(names, sub.Name())
+	}
+	sort.Strings(names)
+	return names
 }
 
 // joinOr returns a natural-language "a, b, or c" join (Oxford comma for 3+).

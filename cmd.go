@@ -44,14 +44,61 @@ func newGenerateCmd(root *cobra.Command, opts []Option) *cobra.Command {
 				return err
 			}
 			skills, _ := g.Skills()
+
+			var totalBytes, totalTokens int
 			for _, s := range skills {
+				b := s.Bytes()
+				totalBytes += len(b)
+				totalTokens += EstimateTokens(b)
 				cmd.Printf("wrote %s/%s\n", dir, s.Filename)
+			}
+
+			cmd.Printf("\n%d skill(s), ~%s tokens (%s)\n",
+				len(skills), formatThousands(totalTokens), formatBytes(totalBytes))
+			if totalTokens > budgetWarnThreshold {
+				cmd.PrintErrf("warning: output is large (~%s tokens) — "+
+					"consider --split=per-leaf, skill.skip on operator subtrees, "+
+					"or trimming inherited flags\n", formatThousands(totalTokens))
 			}
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&dir, "dir", ".claude/skills", "directory to write skill files into")
 	return cmd
+}
+
+// budgetWarnThreshold is the token count above which `skills generate` emits a
+// warning. Skills go into agent context on every turn, so a 15k-token skill is
+// a meaningful tax even if it's "only" a few KB of markdown.
+const budgetWarnThreshold = 15000
+
+// EstimateTokens returns a rough token count for the given bytes. Uses the
+// common bytes/4 heuristic for English prose, which is close enough for a
+// budget warning (actual tokenizers vary by model).
+func EstimateTokens(b []byte) int {
+	if len(b) == 0 {
+		return 0
+	}
+	// Round up so tiny skills don't show as 0 tokens.
+	return (len(b) + 3) / 4
+}
+
+func formatThousands(n int) string {
+	if n < 1000 {
+		return fmt.Sprintf("%d", n)
+	}
+	return fmt.Sprintf("%.1fk", float64(n)/1000)
+}
+
+func formatBytes(n int) string {
+	switch {
+	case n >= 1024*1024:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1024*1024))
+	case n >= 1024:
+		return fmt.Sprintf("%.1f KB", float64(n)/1024)
+	default:
+		return fmt.Sprintf("%d B", n)
+	}
 }
 
 func newPrintCmd(root *cobra.Command, opts []Option) *cobra.Command {

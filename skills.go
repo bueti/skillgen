@@ -52,6 +52,11 @@ const (
 	// over" heading. Use it to point the agent away from alternative tools or
 	// commands this one supersedes (e.g. "Use instead of raw `kubectl delete`").
 	AnnotationPreferOver = "skill.prefer-over"
+
+	// AnnotationAllowedTools populates the Claude Code `allowed-tools`
+	// frontmatter field (comma- or space-separated list of tool names, e.g.
+	// "Bash, Read, Edit"). Only emitted under TargetClaudeCode.
+	AnnotationAllowedTools = "skill.allowed-tools"
 )
 
 // SplitMode selects how many skill files are emitted.
@@ -65,12 +70,35 @@ const (
 	SplitPerLeaf
 )
 
+// Target controls which host's conventions the generated frontmatter follows.
+// Hosts vary in which optional fields they support; TargetGeneric stays strict
+// (name + description only) while richer targets opt in to host-specific keys.
+type Target int
+
+const (
+	// TargetGeneric emits the minimal, interoperable frontmatter: name + description.
+	TargetGeneric Target = iota
+	// TargetClaudeCode emits Claude Code-specific keys like `allowed-tools`
+	// (from the skill.allowed-tools annotation, comma-separated).
+	TargetClaudeCode
+)
+
+// FrontmatterField is a target-specific frontmatter key/value emitted
+// alongside name + description. Value should be YAML-safe.
+type FrontmatterField struct {
+	Key   string
+	Value string
+}
+
 // Skill is a single generated skill file.
 type Skill struct {
 	Name        string
 	Description string
 	Body        string
 	Filename    string // basename, e.g. "mytool.md"
+	// Frontmatter is extra target-specific frontmatter fields emitted after
+	// name + description. Empty for TargetGeneric.
+	Frontmatter []FrontmatterField
 }
 
 // Bytes returns the full file contents (frontmatter + body, trailing newline).
@@ -79,6 +107,9 @@ func (s Skill) Bytes() []byte {
 	buf.WriteString("---\n")
 	fmt.Fprintf(&buf, "name: %s\n", yamlString(s.Name))
 	fmt.Fprintf(&buf, "description: %s\n", yamlString(s.Description))
+	for _, f := range s.Frontmatter {
+		fmt.Fprintf(&buf, "%s: %s\n", f.Key, yamlString(f.Value))
+	}
 	buf.WriteString("---\n\n")
 	body := strings.TrimLeft(s.Body, "\n")
 	buf.WriteString(body)
@@ -118,6 +149,10 @@ func WithIncludeBuiltins() Option {
 	return func(g *Generator) { g.includeBuiltins = true }
 }
 
+// WithTarget selects which host's frontmatter conventions to follow. Default
+// is TargetGeneric (strict name + description).
+func WithTarget(t Target) Option { return func(g *Generator) { g.target = t } }
+
 // Generator emits skills for a cobra command tree.
 type Generator struct {
 	root            *cobra.Command
@@ -127,6 +162,7 @@ type Generator struct {
 	prefix          string
 	skipFn          func(*cobra.Command) bool
 	includeBuiltins bool
+	target          Target
 }
 
 // New returns a Generator for the given root command.
@@ -175,6 +211,22 @@ func (g *Generator) WriteTo(dir string) error {
 	return nil
 }
 
+// targetFrontmatter returns the target-specific frontmatter fields for a
+// command under the generator's current target. Returns nil when the target
+// is TargetGeneric or when no target-specific annotations apply.
+func (g *Generator) targetFrontmatter(c *cobra.Command) []FrontmatterField {
+	switch g.target {
+	case TargetClaudeCode:
+		var out []FrontmatterField
+		if tools := strings.TrimSpace(c.Annotations[AnnotationAllowedTools]); tools != "" {
+			out = append(out, FrontmatterField{Key: "allowed-tools", Value: tools})
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
 func (g *Generator) shouldSkip(c *cobra.Command) bool {
 	if c.Hidden {
 		return true
@@ -217,13 +269,14 @@ func (g *Generator) singleSkill() (Skill, error) {
 		return Skill{}, fmt.Errorf("skillgen: root command has no usable name")
 	}
 
-	desc := deriveDescription(g.root)
+	desc, trig := g.deriveDescription(g.root)
 	if desc == "" {
 		return Skill{}, fmt.Errorf("skillgen: root command %q has no description — set Short, Long, or the %q annotation", g.root.Name(), AnnotationDescription)
 	}
 
 	data.Name = name
 	data.Description = desc
+	data.TriggerClause = trig
 
 	body, err := g.renderBody(data)
 	if err != nil {
@@ -235,6 +288,7 @@ func (g *Generator) singleSkill() (Skill, error) {
 		Description: desc,
 		Body:        body,
 		Filename:    g.prefix + name + ".md",
+		Frontmatter: g.targetFrontmatter(g.root),
 	}, nil
 }
 
@@ -320,17 +374,18 @@ func (g *Generator) leafSkill(c *cobra.Command) (Skill, error) {
 		return Skill{}, fmt.Errorf("skillgen: leaf command at %q has no usable name", c.CommandPath())
 	}
 
-	desc := deriveDescription(c)
+	desc, trig := g.deriveDescription(c)
 	if desc == "" {
 		return Skill{}, fmt.Errorf("skillgen: leaf command %q has no description — set Short, Long, or the %q annotation", c.CommandPath(), AnnotationDescription)
 	}
 
-	body := renderLeafBody(commandData(c), desc)
+	body := renderLeafBody(commandData(c), trig)
 	return Skill{
 		Name:        name,
 		Description: desc,
 		Body:        body,
 		Filename:    g.prefix + name + ".md",
+		Frontmatter: g.targetFrontmatter(c),
 	}, nil
 }
 
@@ -340,7 +395,7 @@ func (g *Generator) overviewSkill(leaves []*cobra.Command) (Skill, error) {
 		return Skill{}, fmt.Errorf("skillgen: root command has no usable name for the overview skill")
 	}
 
-	desc := deriveDescription(g.root)
+	desc, trig := g.deriveDescription(g.root)
 	if desc == "" {
 		return Skill{}, fmt.Errorf("skillgen: root command %q has no description for the overview — set Short, Long, or the %q annotation", g.root.Name(), AnnotationDescription)
 	}
@@ -349,12 +404,13 @@ func (g *Generator) overviewSkill(leaves []*cobra.Command) (Skill, error) {
 	for i, c := range leaves {
 		leafData[i] = commandData(c)
 	}
-	body := renderOverviewBody(commandData(g.root), leafData, desc)
+	body := renderOverviewBody(commandData(g.root), leafData, trig)
 
 	return Skill{
 		Name:        name,
 		Description: desc,
 		Body:        body,
 		Filename:    g.prefix + name + ".md",
+		Frontmatter: g.targetFrontmatter(g.root),
 	}, nil
 }
