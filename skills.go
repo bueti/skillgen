@@ -16,6 +16,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -148,7 +149,7 @@ type Skill struct {
 
 // Dir returns the skill directory portion of Path (e.g. "mytool" for
 // "mytool/SKILL.md"), which by spec must match the `name` frontmatter.
-func (s Skill) Dir() string { return filepath.Dir(s.Path) }
+func (s Skill) Dir() string { return path.Dir(s.Path) }
 
 // Bytes returns the full file contents (frontmatter + body, trailing newline).
 func (s Skill) Bytes() []byte {
@@ -285,8 +286,13 @@ func (g *Generator) WriteTo(dir string) error {
 // skillPath returns the relative path within the output directory for a
 // skill with the given slug name. Always "<prefix><name>/SKILL.md" — the
 // spec requires the containing directory to match the skill name.
+//
+// Use path.Join rather than filepath.Join so Skill.Path is a platform-
+// neutral identifier that round-trips through YAML and git without
+// backslash surprises on Windows. WriteTo converts to OS-specific
+// separators via filepath.Join at write time.
 func (g *Generator) skillPath(name string) string {
-	return filepath.Join(g.prefix+name, "SKILL.md")
+	return path.Join(g.prefix+name, "SKILL.md")
 }
 
 // buildFrontmatter assembles the spec-standard frontmatter fields for a
