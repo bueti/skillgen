@@ -61,13 +61,15 @@ if err := gen.WriteTo("./.claude/skills"); err != nil {
 
 Any cobra command can carry annotations that shape its output:
 
-| Annotation          | Effect                                                               |
-| ------------------- | -------------------------------------------------------------------- |
-| `skill.trigger`     | Appends `"Use when the user asks to <trigger>."` to the description. |
-| `skill.description` | Replaces the generated description entirely.                         |
-| `skill.name`        | Overrides the skill name (root only in single-skill mode).           |
-| `skill.skip`        | `"true"` to exclude the command and its subtree.                     |
-| `skill.examples`    | Free-form Markdown appended to the command's body section.           |
+| Annotation          | Effect                                                                         |
+| ------------------- | ------------------------------------------------------------------------------ |
+| `skill.trigger`     | Appends `"Use when the user asks to <trigger>."` to the description.           |
+| `skill.description` | Replaces the generated description entirely.                                   |
+| `skill.name`        | Overrides the skill name (root only in single-skill mode).                     |
+| `skill.skip`        | `"true"` to exclude the command and its subtree.                               |
+| `skill.examples`    | Free-form Markdown appended to the command's body section.                     |
+| `skill.avoid`       | Renders as an **Avoid** section — tell the agent what *not* to do.             |
+| `skill.prefer-over` | Renders as a **Prefer over** section — point the agent away from alternatives. |
 
 ```go
 deploy := &cobra.Command{
@@ -131,6 +133,32 @@ Try it:
 
 ```sh
 go run ./example skills print
+```
+
+## What's mined from cobra
+
+Before consulting annotations, skillgen extracts free signal straight from the command tree so you don't have to duplicate it:
+
+- `cmd.Aliases` → rendered as `Aliases: …` and, when `skill.trigger` is unset, auto-derives trigger phrases ("Use when the user asks to deploy, ship, or release").
+- `cmd.Deprecated` → renders a prominent `> **Deprecated:** …` callout so agents know to avoid the command and see the replacement.
+- `flag.Deprecated` → deprecated flags are filtered from the rendered flag list entirely; the author already said the flag shouldn't be suggested.
+
+Annotations *augment* this mined signal rather than replace it — an alias list alone is often enough to skip writing `skill.trigger` yourself.
+
+## Linting
+
+`skills lint` walks the same tree the generator walks and reports missing or low-quality signal — empty descriptions, overly short `Short` text, leaves without trigger hints, and deprecated commands without a helpful message. Errors produce exit code 1; `--strict` promotes warnings to errors too.
+
+```sh
+mytool skills lint                 # report, but don't fail on warnings
+mytool skills lint --strict        # CI-friendly: any finding is a hard fail
+```
+
+A minimal GitHub Actions step:
+
+```yaml
+- name: Lint skills
+  run: go run ./your-cli skills lint --strict
 ```
 
 ## Split mode
