@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Changed
+
+- **Bumped `github.com/bueti/skilllint` to v0.3.0.** Picks up inline `<!-- skilllint:disable rule-id -->` directives, fail-closed `ParseSeverity`, and the `Fix` / `Edit` types with three autofixable rules (`name-format`, `trigger-double-prefix`, `heading-level-jumps`). None of those rules fire on skillgen-generated output — names are slugged at generation, triggers are normalised, and the heading structure never jumps — so there's no behavioural change for the `skills lint` subcommand. Consumers who want autofix on hand-written SKILL.md should run `skilllint lint --fix` directly.
+
 ### Changed (breaking)
 
 - **Spec-compliance linting is now delegated to [`skilllint`](https://github.com/bueti/skilllint).** `Generator.Lint()` still walks the cobra command tree for the rules skilllint can't run (missing descriptions on specific commands, depth, sibling variance, operator-suffix names, etc.) and now additionally runs skilllint against every generated SKILL.md to pick up the 16 rules that library ships with. Rule IDs for the cobra-tree checks are now prefixed with `cmd-` (e.g. `cmd-description-missing`, `cmd-trigger-missing`, `cmd-operator-suffix`, `cmd-depth`, `cmd-sibling-variance`) to distinguish them from skilllint's rule IDs in the output.
