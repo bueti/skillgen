@@ -213,11 +213,15 @@ Targets other than the minimal default are additive — they never strip standar
 
 ## Linting
 
-`skills lint` walks the same tree the generator walks and reports missing or low-quality signal — empty descriptions, overly short `Short` text, leaves without trigger hints, deprecated commands without a helpful message. It also enforces the [agentskills.io spec](https://agentskills.io/specification) hard limits (name ≤ 64 chars and matching the spec regex, description ≤ 1024 chars, compatibility ≤ 500 chars) as errors, and the soft limits (body ≤ 5000 tokens, ≤ 500 lines) as warnings. Errors produce exit code 1; `--strict` promotes warnings to errors too.
+`skills lint` runs two passes. The first walks the cobra command tree for checks keyed by *command path* (more actionable than a generated file path): missing descriptions, overly short `Short` text, leaves without trigger hints, deprecated commands without a helpful message, operator-suffix names, deep nesting, sibling-description variance. These rules are prefixed `cmd-` in the output.
+
+The second pass delegates to [`skilllint`](https://github.com/bueti/skilllint) — skillgen generates each SKILL.md in memory and runs skilllint's built-in rules against it: spec hard limits (name format, description length, compatibility length) as errors, and spec soft limits + quality checks (body tokens, body lines, vague descriptions, heading-level jumps, trigger phrasing) as warnings. Errors produce exit code 1; `--strict` promotes warnings to errors too.
 
 ```sh
-mytool skills lint                 # report, but don't fail on warnings
-mytool skills lint --strict        # CI-friendly: any finding is a hard fail
+mytool skills lint                              # report, but don't fail on warnings
+mytool skills lint --strict                     # CI-friendly: any finding is a hard fail
+mytool skills lint --format=json                # machine-readable
+mytool skills lint --format=github-actions      # inline annotations on GitHub PRs
 ```
 
 A minimal GitHub Actions step:

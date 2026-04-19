@@ -5,6 +5,8 @@ import (
 	"io"
 	"path/filepath"
 
+	"github.com/bueti/skilllint"
+	"github.com/bueti/skilllint/rules"
 	"github.com/spf13/cobra"
 )
 
@@ -51,9 +53,9 @@ func newGenerateCmd(root *cobra.Command, opts []Option) *cobra.Command {
 			for _, s := range skills {
 				b := s.Bytes()
 				totalBytes += len(b)
-				totalTokens += EstimateTokens(b)
+				totalTokens += rules.EstimateTokens(string(b))
 				cmd.Printf("wrote %s\n", filepath.Join(dir, s.Path))
-				if EstimateTokens([]byte(s.Body)) > SpecMaxBodyTokens {
+				if rules.EstimateTokens(s.Body) > rules.MaxBodyTokens {
 					oversized = append(oversized, s.Name)
 				}
 			}
@@ -61,7 +63,7 @@ func newGenerateCmd(root *cobra.Command, opts []Option) *cobra.Command {
 			cmd.Printf("\n%d skill(s), ~%s tokens (%s)\n",
 				len(skills), formatThousands(totalTokens), formatBytes(totalBytes))
 			for _, name := range oversized {
-				cmd.PrintErrf("warning: skill %q body exceeds the spec recommendation (~%d tokens) — consider split mode or moving detail to referenced files\n", name, SpecMaxBodyTokens)
+				cmd.PrintErrf("warning: skill %q body exceeds the spec recommendation (~%d tokens) — consider split mode or moving detail to referenced files\n", name, rules.MaxBodyTokens)
 			}
 			if totalTokens > budgetWarnThreshold {
 				cmd.PrintErrf("warning: aggregate output is large (~%s tokens) — "+
@@ -75,21 +77,12 @@ func newGenerateCmd(root *cobra.Command, opts []Option) *cobra.Command {
 	return cmd
 }
 
-// budgetWarnThreshold is the token count above which `skills generate` emits a
-// warning. Skills go into agent context on every turn, so a 15k-token skill is
-// a meaningful tax even if it's "only" a few KB of markdown.
+// budgetWarnThreshold is the aggregate token count above which
+// `skills generate` emits a warning. The per-skill threshold (spec's 5000)
+// is owned by skilllint/rules; this one tracks the total across every skill
+// the CLI writes in one run, which is a separate concern from any single
+// skill's compliance.
 const budgetWarnThreshold = 15000
-
-// EstimateTokens returns a rough token count for the given bytes. Uses the
-// common bytes/4 heuristic for English prose, which is close enough for a
-// budget warning (actual tokenizers vary by model).
-func EstimateTokens(b []byte) int {
-	if len(b) == 0 {
-		return 0
-	}
-	// Round up so tiny skills don't show as 0 tokens.
-	return (len(b) + 3) / 4
-}
 
 func formatThousands(n int) string {
 	if n < 1000 {
@@ -120,35 +113,34 @@ func newPrintCmd(root *cobra.Command, opts []Option) *cobra.Command {
 }
 
 func newLintCmd(root *cobra.Command, opts []Option) *cobra.Command {
-	var strict bool
+	var (
+		strict bool
+		format string
+	)
 	cmd := &cobra.Command{
 		Use:   "lint",
 		Short: "Report missing or low-quality skill signal in the command tree",
-		Long: "Walk the command tree and report issues that would produce a low-quality " +
-			"skill — missing descriptions, missing trigger hints, deprecated commands " +
-			"without a replacement message, and so on.\n\n" +
-			"Exit code is 1 when any error is found. With --strict, warnings are treated " +
-			"as errors too — use this in CI to enforce a quality bar.",
+		Long: "Walk the command tree and lint the resulting skills.\n\n" +
+			"Two passes run: cobra-tree checks (`cmd-*` rule IDs) that inspect command " +
+			"metadata, and spec-compliance checks from the skilllint library that inspect " +
+			"the generated SKILL.md bytes. Exit code is 1 when any error is found. With " +
+			"--strict, warnings are treated as errors too.",
 		// Lint failures are not usage errors; keep CI output tidy.
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			issues := New(root, opts...).Lint()
-			cmd.Print(FormatIssues(issues))
-
-			var failing int
-			for _, iss := range issues {
-				if iss.Level == IssueError || (strict && iss.Level == IssueWarning) {
-					failing++
-				}
+			if err := skilllint.Write(cmd.OutOrStdout(), issues, skilllint.Format(format)); err != nil {
+				return err
 			}
-			if failing > 0 {
-				return fmt.Errorf("%d lint finding(s) failed the check", failing)
+			if skilllint.HasErrors(issues) || (strict && skilllint.HasWarnings(issues)) {
+				return fmt.Errorf("lint failed")
 			}
 			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&strict, "strict", false, "treat warnings as errors")
+	cmd.Flags().StringVar(&format, "format", "text", "output format: text, json, github-actions")
 	return cmd
 }
 

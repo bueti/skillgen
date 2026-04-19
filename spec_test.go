@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bueti/skilllint"
+	"github.com/bueti/skilllint/rules"
 	"github.com/spf13/cobra"
 )
 
@@ -137,7 +139,7 @@ func TestEmptyMetadataAnnotationsIgnored(t *testing.T) {
 // --- spec-limit lint rules ---
 
 func TestLintNameTooLong(t *testing.T) {
-	longName := strings.Repeat("a", SpecMaxNameLength+1)
+	longName := strings.Repeat("a", rules.MaxNameLength+1)
 	root := &cobra.Command{
 		Use:   "mytool",
 		Short: "A reasonable description here",
@@ -148,7 +150,7 @@ func TestLintNameTooLong(t *testing.T) {
 	issues := New(root).Lint()
 	var found bool
 	for _, iss := range issues {
-		if iss.Field == "name" && iss.Level == IssueError && strings.Contains(iss.Message, "spec limit") {
+		if iss.Field == "name" && iss.Severity == skilllint.SeverityError && strings.Contains(iss.Message, "spec limit") {
 			found = true
 		}
 	}
@@ -168,7 +170,7 @@ func TestLintNameInvalidFormat(t *testing.T) {
 	issues := New(root).Lint()
 	var found bool
 	for _, iss := range issues {
-		if iss.Field == "name" && iss.Level == IssueError && strings.Contains(iss.Message, "spec regex") {
+		if iss.Field == "name" && iss.Severity == skilllint.SeverityError && strings.Contains(iss.Message, "spec regex") {
 			found = true
 		}
 	}
@@ -181,14 +183,14 @@ func TestLintNameValidLowercase(t *testing.T) {
 	root := &cobra.Command{Use: "mytool", Short: "A reasonable description here"}
 	issues := New(root).Lint()
 	for _, iss := range issues {
-		if iss.Field == "name" && iss.Level == IssueError {
+		if iss.Field == "name" && iss.Severity == skilllint.SeverityError {
 			t.Errorf("did not expect name error on valid name: %v", iss)
 		}
 	}
 }
 
 func TestLintDescriptionTooLong(t *testing.T) {
-	longDesc := strings.Repeat("x", SpecMaxDescriptionLength+1)
+	longDesc := strings.Repeat("x", rules.MaxDescriptionLength+1)
 	root := &cobra.Command{
 		Use:   "mytool",
 		Short: "short",
@@ -199,7 +201,7 @@ func TestLintDescriptionTooLong(t *testing.T) {
 	issues := New(root).Lint()
 	var found bool
 	for _, iss := range issues {
-		if iss.Field == "description" && iss.Level == IssueError && strings.Contains(iss.Message, "spec limit") {
+		if iss.Field == "description" && iss.Severity == skilllint.SeverityError && strings.Contains(iss.Message, "spec limit") {
 			found = true
 		}
 	}
@@ -209,7 +211,7 @@ func TestLintDescriptionTooLong(t *testing.T) {
 }
 
 func TestLintCompatibilityTooLong(t *testing.T) {
-	long := strings.Repeat("x", SpecMaxCompatibilityLength+1)
+	long := strings.Repeat("x", rules.MaxCompatibilityLength+1)
 	root := &cobra.Command{
 		Use:   "mytool",
 		Short: "A reasonable description here",
@@ -220,7 +222,7 @@ func TestLintCompatibilityTooLong(t *testing.T) {
 	issues := New(root).Lint()
 	var found bool
 	for _, iss := range issues {
-		if iss.Field == "compatibility" && iss.Level == IssueError {
+		if iss.Field == "compatibility" && iss.Severity == skilllint.SeverityError {
 			found = true
 		}
 	}
@@ -240,7 +242,7 @@ func TestLintBodyOverTokens(t *testing.T) {
 	issues := New(root).Lint()
 	var found bool
 	for _, iss := range issues {
-		if iss.Field == "body-tokens" && iss.Level == IssueWarning {
+		if iss.Rule == "body-tokens" && iss.Severity == skilllint.SeverityWarning {
 			found = true
 		}
 	}
@@ -250,7 +252,7 @@ func TestLintBodyOverTokens(t *testing.T) {
 }
 
 func TestLintBodyOverLines(t *testing.T) {
-	long := strings.Repeat("a line\n", SpecMaxBodyLines+50)
+	long := strings.Repeat("a line\n", rules.MaxBodyLines+50)
 	root := &cobra.Command{
 		Use:   "mytool",
 		Short: "A reasonable description here",
@@ -259,7 +261,7 @@ func TestLintBodyOverLines(t *testing.T) {
 	issues := New(root).Lint()
 	var found bool
 	for _, iss := range issues {
-		if iss.Field == "body-lines" && iss.Level == IssueWarning {
+		if iss.Rule == "body-lines" && iss.Severity == skilllint.SeverityWarning {
 			found = true
 		}
 	}

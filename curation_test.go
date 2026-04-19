@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bueti/skilllint"
 	"github.com/spf13/cobra"
 )
 
@@ -234,21 +235,8 @@ func TestTargetClaudeCodePerLeafAnnotation(t *testing.T) {
 	}
 }
 
-// --- #4: output budget helpers ---
-
-func TestEstimateTokensEmpty(t *testing.T) {
-	if got := EstimateTokens(nil); got != 0 {
-		t.Errorf("empty input should be 0 tokens, got %d", got)
-	}
-}
-
-func TestEstimateTokensRoughly(t *testing.T) {
-	// 400 bytes → ~100 tokens under the bytes/4 heuristic.
-	got := EstimateTokens(bytes.Repeat([]byte("x"), 400))
-	if got < 95 || got > 105 {
-		t.Errorf("expected ~100 tokens for 400 bytes, got %d", got)
-	}
-}
+// Token estimation moved to the skilllint/rules package and is covered by
+// tests there; no duplicate coverage needed here.
 
 // --- #6: forest lint rules ---
 
@@ -259,12 +247,12 @@ func TestLintOperatorSubtree(t *testing.T) {
 	issues := New(root).Lint()
 	var found bool
 	for _, iss := range issues {
-		if iss.Field == "operator-subtree" && iss.Level == IssueWarning {
+		if iss.Rule == "cmd-operator-suffix" && iss.Severity == skilllint.SeverityWarning {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("expected operator-subtree warning:\n%v", issues)
+		t.Errorf("expected cmd-operator-suffix warning:\n%v", issues)
 	}
 }
 
@@ -282,7 +270,7 @@ func TestLintPathDepth(t *testing.T) {
 	issues := New(root).Lint()
 	var found bool
 	for _, iss := range issues {
-		if iss.Field == "depth" && iss.Command == "mytool a b c d" {
+		if iss.Field == "depth" && iss.Source == "mytool a b c d" {
 			found = true
 		}
 	}
@@ -300,7 +288,7 @@ func TestLintSiblingVariance(t *testing.T) {
 	issues := New(root).Lint()
 	var found bool
 	for _, iss := range issues {
-		if iss.Field == "sibling-variance" && iss.Command == "mytool" {
+		if iss.Field == "sibling-variance" && iss.Source == "mytool" {
 			found = true
 		}
 	}
