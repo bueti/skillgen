@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bueti/skilllint"
 	"github.com/spf13/cobra"
 )
 
@@ -143,7 +144,7 @@ func TestLintFlagsMissingDescription(t *testing.T) {
 	issues := New(root).Lint()
 	var found bool
 	for _, iss := range issues {
-		if iss.Command == "mytool" && iss.Field == "description" && iss.Level == IssueError {
+		if iss.Source == "mytool" && iss.Field == "description" && iss.Severity == skilllint.SeverityError {
 			found = true
 		}
 	}
@@ -157,7 +158,7 @@ func TestLintFlagsShortShort(t *testing.T) {
 	issues := New(root).Lint()
 	var found bool
 	for _, iss := range issues {
-		if iss.Field == "short" && iss.Level == IssueWarning {
+		if iss.Field == "short" && iss.Severity == skilllint.SeverityWarning {
 			found = true
 		}
 	}
@@ -171,7 +172,7 @@ func TestLintFlagsMissingTrigger(t *testing.T) {
 	issues := New(root).Lint()
 	var found bool
 	for _, iss := range issues {
-		if iss.Field == "trigger" && iss.Level == IssueWarning {
+		if iss.Field == "trigger" && iss.Severity == skilllint.SeverityWarning {
 			found = true
 		}
 	}
@@ -205,7 +206,7 @@ func TestLintDeprecatedWithoutReplacement(t *testing.T) {
 	issues := New(root).Lint()
 	var found bool
 	for _, iss := range issues {
-		if iss.Command == "mytool old" && iss.Field == "deprecated" {
+		if iss.Source == "mytool old" && iss.Field == "deprecated" {
 			found = true
 		}
 	}
@@ -223,8 +224,8 @@ func TestLintRespectsSkip(t *testing.T) {
 	root.AddCommand(skipped)
 	issues := New(root).Lint()
 	for _, iss := range issues {
-		if strings.HasPrefix(iss.Command, "mytool internal") {
-			t.Errorf("skipped command %q should not produce lint findings: %v", iss.Command, iss)
+		if strings.HasPrefix(iss.Source, "mytool internal") {
+			t.Errorf("skipped command %q should not produce lint findings: %v", iss.Source, iss)
 		}
 	}
 }
@@ -239,14 +240,9 @@ func TestLintSortOrder(t *testing.T) {
 		t.Fatalf("expected multiple issues, got %d", len(issues))
 	}
 	// root sorts before "mytool sub"
-	if issues[0].Command != "mytool" {
-		t.Errorf("want first issue on root, got %q", issues[0].Command)
+	if issues[0].Source != "mytool" {
+		t.Errorf("want first issue on root, got %q", issues[0].Source)
 	}
 }
 
-func TestFormatIssuesNoIssues(t *testing.T) {
-	out := FormatIssues(nil)
-	if !strings.Contains(out, "no issues") {
-		t.Errorf("unexpected empty output: %q", out)
-	}
-}
+// FormatIssues moved to skilllint.Write — covered by skilllint's own tests.

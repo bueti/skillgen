@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- **Spec-compliance linting is now delegated to [`skilllint`](https://github.com/bueti/skilllint).** `Generator.Lint()` still walks the cobra command tree for the rules skilllint can't run (missing descriptions on specific commands, depth, sibling variance, operator-suffix names, etc.) and now additionally runs skilllint against every generated SKILL.md to pick up the 16 rules that library ships with. Rule IDs for the cobra-tree checks are now prefixed with `cmd-` (e.g. `cmd-description-missing`, `cmd-trigger-missing`, `cmd-operator-suffix`, `cmd-depth`, `cmd-sibling-variance`) to distinguish them from skilllint's rule IDs in the output.
+- **`Generator.Lint()` now returns `[]skilllint.Issue`** instead of skillgen's own `Issue` type. The skillgen `Issue`, `IssueLevel`, `IssueError`, `IssueWarning`, and `FormatIssues` identifiers are removed. Consumers should import `github.com/bueti/skilllint` for `Issue`, `Severity`, and `Write` (the generic formatter).
+- **`SpecMaxNameLength`, `SpecMaxDescriptionLength`, `SpecMaxCompatibilityLength`, `SpecMaxBodyTokens`, `SpecMaxBodyLines` removed.** They live on `github.com/bueti/skilllint/rules` now (`MaxNameLength`, `MaxDescriptionLength`, `MaxCompatibilityLength`, `MaxBodyTokens`, `MaxBodyLines`).
+- **`EstimateTokens` removed.** Use `rules.EstimateTokens` from `github.com/bueti/skilllint/rules`.
+
+### Added
+
+- `skills lint --format=<text|json|github-actions>` passes through to skilllint's formatters so CI can consume JSON or render inline GitHub annotations.
+- Filesystem-touching rules (`script-exists`, `orphaned-file`) and `name-matches-dir` are automatically disabled when skillgen invokes skilllint, since the skill bytes haven't been written to disk and the name/dir pair is already consistent by construction. Run `skilllint` directly to apply those rules against on-disk skill trees.
+
 ## [0.4.1] — 2026-04-18
 
 ### Changed

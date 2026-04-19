@@ -84,20 +84,6 @@ const (
 	AnnotationMetadataPrefix = "skill.metadata."
 )
 
-// Spec limits from https://agentskills.io/specification.
-const (
-	// SpecMaxNameLength is the maximum allowed length of a skill `name`.
-	SpecMaxNameLength = 64
-	// SpecMaxDescriptionLength is the maximum allowed length of a skill `description`.
-	SpecMaxDescriptionLength = 1024
-	// SpecMaxCompatibilityLength is the maximum allowed length of the optional `compatibility` field.
-	SpecMaxCompatibilityLength = 500
-	// SpecMaxBodyTokens is the spec's recommended upper bound on SKILL.md body tokens.
-	SpecMaxBodyTokens = 5000
-	// SpecMaxBodyLines is the spec's recommended upper bound on SKILL.md body lines.
-	SpecMaxBodyLines = 500
-)
-
 // SplitMode selects how many skill files are emitted.
 type SplitMode int
 
